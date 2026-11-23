@@ -129,3 +129,20 @@ describe("chiamata al cervello e consumi (test 43, 45, 46)", () => {
     rmRoot(ctx.paths);
   });
 });
+
+import { eseguiSveglia } from "../src/run/sveglia.ts";
+import { scenario } from "./scenario.ts";
+describe("modelli per tipo di compito", () => {
+  test("apertura e metà seduta usano il modello delle decisioni complesse, briefing e chiusura quello semplice", async () => {
+    const sc = scenario({ simboli: [["AAA", "Technology"]] });
+    for (const t of ["briefing", "apertura", "meta", "chiusura"] as const) {
+      const s = sc.slot(t);
+      sc.setNowAt(s);
+      await eseguiSveglia(sc.ctx, { slot: s, forzata: false });
+    }
+    expect(sc.brain.calls.map((c) => `${c.task}:${c.model}`)).toEqual([
+      "decisione-briefing:claude-sonnet-5-5", "decisione-apertura:claude-opus-5-5", "decisione-meta:claude-opus-5-5", "decisione-chiusura:claude-sonnet-5-5",
+    ]);
+    rmRoot(sc.ctx.paths);
+  });
+});

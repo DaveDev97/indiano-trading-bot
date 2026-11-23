@@ -52,3 +52,17 @@ export function appendUsage(paths: Paths, row: RigaConsumo): void {
 export function readUsage(paths: Paths): RigaConsumo[] {
   return readJsonlDir<RigaConsumo>(paths.aiUsage).rows;
 }
+
+/**
+ * Modello usato davvero nelle ultime chiamate di queste tipologie: quello con il costo maggiore nel dettaglio per modello
+ * (Claude Code usa anche un modello piccolo per compiti interni). null se non c'è ancora nessuna chiamata misurata.
+ */
+export function modelloOsservato(righe: RigaConsumo[], tipologie: string[]): { modello: string; quando: string } | null {
+  for (let i = righe.length - 1; i >= 0; i--) {
+    const r = righe[i]!;
+    if (!tipologie.includes(r.task)) continue;
+    const m = Object.entries(r.perModello ?? {}).sort((a, b) => b[1].costUSD - a[1].costUSD || b[1].outputTokens - a[1].outputTokens)[0];
+    if (m) return { modello: m[0], quando: r.ts };
+  }
+  return null;
+}

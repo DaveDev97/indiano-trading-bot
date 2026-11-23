@@ -440,7 +440,7 @@ async function giro(ctx: Ctx, o: OpzioniSveglia, lock: HeldLock, r: EsitoSveglia
   const cerv = await chiamaCervello(ctx, P, {
     task: taskId, runId, forzata: o.forzata, systemPrompt: SYSTEM_DECISIONE,
     istruzioni: `Sveglia di ${NOME_SVEGLIA[tipo]} del ${seduta}. Decidi tra le opzioni ammesse nei DATI. Se acquistiAmmessi è false non proporre acquisti.`,
-    dati, schema: SCHEMA_DECISIONE, valida: validaDecisione, modello: P.s("ai.modelloDecisioni"), tetto: P.n("ai.tettoDecisione"),
+    dati, schema: SCHEMA_DECISIONE, valida: validaDecisione, modello: P.s(tipo === "apertura" || tipo === "meta" ? "ai.modelloDecisioni" : "ai.modelloSemplici"), tetto: P.n("ai.tettoDecisione"),
   });
   allarmi.push(...cerv.allarmi);
   let ragionamento = "";

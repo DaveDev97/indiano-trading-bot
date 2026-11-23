@@ -12,6 +12,23 @@
     "review": "bun run src/cli/review.ts",
     "dashboard": "bun run src/cli/dashboard.ts",
     "status": "bun run src/cli/status.ts",
-    "build": "bun run scripts/build.ts"
+    "build": "bun run scripts/build.ts",
+    "client": "bun run scripts/client.ts"
+  },
+  "dependencies": {
+    "@base-ui/react": "1.1.0",
+    "@number-flow/react": "0.5.11",
+    "clsx": "2.1.1",
+    "d3-array": "3.2.4",
+    "d3-scale": "4.0.2",
+    "d3-shape": "3.2.0",
+    "motion": "12.27.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "tailwind-merge": "2.6.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "4.1.8",
+    "tailwindcss": "4.1.8"
   }
 }

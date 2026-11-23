@@ -1,0 +1,93 @@
+/* CSS dei grafici bklit, compilato con Tailwind 4 in src/dashboard/assets/client.css (bun run client).
+   Solo tema e utilità: niente preflight, così le pagine della dashboard non cambiano.
+   Le variabili di bklit puntano ai colori Dusk definiti in style.css (che non è in un layer, quindi vince sempre). */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@source "./";
+
+@theme inline {
+  --color-background: var(--bk-background);
+  --color-foreground: var(--bk-foreground);
+  --color-muted: var(--bk-muted);
+  --color-muted-foreground: var(--bk-muted-foreground);
+  --color-border: var(--bk-border);
+  --color-popover: var(--bk-popover);
+  --color-popover-foreground: var(--bk-foreground);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-positive: var(--chart-positive);
+  --color-chart-negative: var(--chart-negative);
+  --color-chart-label: var(--chart-label);
+  --color-chart-tooltip-background: var(--chart-tooltip-background);
+  --color-chart-tooltip-foreground: var(--chart-tooltip-foreground);
+  --color-chart-tooltip-muted: var(--chart-tooltip-muted);
+  --color-chart-indicator: var(--chart-indicator-color);
+  --color-chart-indicator-secondary: var(--chart-indicator-secondary-color);
+  --font-sans: var(--font-body);
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+}
+
+:root {
+  /* token di shadcn usati dai componenti, sui colori Dusk */
+  --bk-background: var(--color-paper-2);
+  --bk-foreground: var(--color-ink);
+  --bk-muted: oklch(100% 0 0 / 0.05);
+  --bk-muted-foreground: var(--color-muted);
+  --bk-border: var(--color-rule);
+  --bk-popover: var(--color-paper-3);
+  --background: var(--bk-background);
+  --foreground: var(--bk-foreground);
+  --muted: var(--bk-muted);
+  --muted-foreground: var(--bk-muted-foreground);
+  --border: var(--bk-border);
+  --popover: var(--bk-popover);
+  --popover-foreground: var(--bk-foreground);
+  --radius: 10px;
+  /* grafici: pervinca = il bot e i valori positivi, albicocca = i valori negativi, grigio = SPY */
+  --chart-1: var(--color-accent);
+  --chart-2: var(--color-accent-2);
+  --chart-3: oklch(60% 0.12 274);
+  --chart-4: oklch(91% 0.038 274);
+  --chart-5: var(--color-muted);
+  --chart-positive: var(--color-accent);
+  --chart-negative: var(--color-accent-2);
+  --chart-background: var(--color-paper-2);
+  --chart-foreground: var(--color-muted);
+  --chart-foreground-muted: oklch(45% 0.016 262);
+  --chart-line-primary: var(--color-accent);
+  --chart-line-secondary: var(--color-muted);
+  --chart-crosshair: oklch(60% 0.016 262);
+  --chart-grid: var(--color-rule);
+  --chart-brush-border: var(--color-rule);
+  --chart-tooltip-background: var(--color-paper-3);
+  --chart-tooltip-foreground: var(--color-ink);
+  --chart-tooltip-muted: var(--color-muted);
+  --chart-indicator-color: var(--color-ink-2);
+  --chart-indicator-secondary-color: var(--color-rule);
+  --chart-marker-background: var(--color-paper-3);
+  --chart-marker-border: var(--color-rule);
+  --chart-marker-foreground: var(--color-ink);
+  --chart-marker-badge-background: var(--color-shade);
+  --chart-marker-badge-foreground: var(--color-ink);
+  --chart-segment-background: oklch(100% 0 0 / 0.04);
+  --chart-segment-line: oklch(100% 0 0 / 0.2);
+  --chart-label: var(--color-muted);
+  --chart-scale-mix: var(--color-paper-2);
+  --chart-scale-01: var(--color-rule);
+  --chart-scale-pattern-color: var(--color-paper-2);
+  --legend: var(--color-paper-3);
+  --legend-foreground: var(--color-ink);
+  --legend-muted: oklch(100% 0 0 / 0.05);
+  --legend-muted-foreground: var(--color-muted);
+  --legend-track: var(--color-rule);
+}
+
+/* un'isola montata nasconde il grafico SVG di riserva generato dal server */
+.isola[data-montata] > .riserva { display: none; }
+.isola { position: relative; min-width: 0; }

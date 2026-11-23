@@ -125,3 +125,41 @@ Formato: data — dubbio — scelta — motivo. Si sceglie sempre l'opzione più
     - Il tick decide che la sveglia è da fare *prima* di prendere il lock. Se arriva al lock dopo che un'altra istanza l'ha già eseguita, la rifaceva.
     - Con Alpaca vero niente ordini doppi (stessi id), ma una seconda chiamata al cervello e messaggi doppi.
     - Ora, dentro il lock, una sveglia già eseguita non si ripete (salvo `--force`).
+
+30. **Dipendenze per i grafici della dashboard: bklit e motion** (override esplicito dell'utente, 23/11/2026).
+    - Dubbio: CLAUDE.md dice "zero dipendenze esterne, niente pacchetti npm, niente CDN nella dashboard". L'utente ha chiesto in chat di usare comunque le librerie di bklit e motion.
+    - Scelta: le dipendenze valgono **solo per il lato browser** della dashboard. Motore, broker, cervello e server non le importano, e `bun test` gira senza.
+    - I grafici bklit (licenza MIT) sono copiati come sorgenti in `src/dashboard/client/bklit/`, come fa il loro registro shadcn: commit e provenienza in `PROVENIENZA.txt`. Esclusi mappe, Sankey e i loro test.
+    - Pacchetti installati con bun, versioni fissate:
+      - per il browser: React 19.2, react-dom, motion 12.27, d3-array/scale/shape, clsx, tailwind-merge, `@number-flow/react` 0.5.11, `@base-ui/react` 1.1.0;
+      - solo per compilare: Tailwind 4.1.8 (CLI).
+    - `bun run client` compila tutto in `src/dashboard/assets/client.js` (503 KB) e `client.css` (31 KB). Nessun CDN: la dashboard li serve da sé.
+    - I due file stanno nel repository, così il Raspberry e i pacchetti funzionano senza `node_modules`.
+    - Ogni grafico è un'"isola": dati in JSON e, dentro, il grafico SVG del server come riserva. Senza JavaScript la pagina resta completa.
+    - Motion anima con un solo ingresso morbido card e righe. bklit usa motion per i propri grafici, NumberFlow fa scorrere le cifre. Con "riduci movimento" tutto resta fermo.
+
+31. **Tema Dusk al posto di Vantage** (richiesta dell'utente).
+    - Ardesia, vetro fumé con bordo illuminato, Wix Madefor Display e Text serviti in locale (licenza OFL); Geologica è stato rimosso.
+    - Segnali: pervinca (il bot, fatto, attivo, guadagno) e albicocca (aperto, da guardare, perdita).
+    - Il tema vieta il rosso per le perdite, quindi niente rosso.
+
+32. **Revisione `unslop`** (skill di heydamir, letta come regole, non installata). Applicati:
+    - un grafico principale a tutta larghezza (rendimento del bot contro SPY) e gli altri più piccoli e di tipo diverso: barre delle sedute, ciambella, classifica dei settori;
+    - tolto il grafico del risultato per posizione, già presente nell'elenco delle posizioni;
+    - nessuna emoji nell'interfaccia;
+    - un solo formato delle cifre, con il separatore delle migliaia sempre;
+    - spaziature sulla griglia di 4 px e contenuto fino a 1440 px;
+    - niente punto finale nelle frasi brevi;
+    - curva delle linee monotona, che non inventa picchi tra i punti.
+
+33. **Grafico del rendimento invece di "base 100".**
+    - bklit fa partire l'asse da zero quando i dati sono positivi, il che appiattiva l'indice a base 100.
+    - Il grafico ora mostra il rendimento dall'inizio del periodo, dove lo zero è il riferimento naturale. Lo stesso per la posizione: variazione dal prezzo di carico, con stop e take profit tratteggiati.
+
+34. **Barre di bklit solo verticali.** Le barre orizzontali di bklit non gestiscono i valori negativi (larghezza negativa in console). Le barre con i negativi sono verticali, e i settori sono una classifica in HTML con barre sottili.
+
+35. **Modelli AI** (richiesta dell'utente).
+    - Opus 5.5 (`claude-opus-5-5`) per le decisioni complesse: sveglie di apertura e metà seduta, dove si comprano e vendono titoli, e per la review.
+    - Sonnet 5.5 (`claude-sonnet-5-5`) per briefing e chiusura, che scrivono solo piano e resoconto.
+    - Nuovo parametro `ai.modelloSemplici`. Sul conto reale applicato come versione v2 dei parametri, autore "utente".
+    - Con "predefinito" la dashboard mostra il modello usato davvero nell'ultima chiamata. Se la chiamata ne usa più di uno, mostra quello con il costo maggiore: Claude Code usa anche un modello piccolo per compiti interni.

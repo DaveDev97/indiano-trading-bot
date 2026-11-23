@@ -16,7 +16,7 @@ import { errText, redact } from "../util/redact.ts";
 import { esc } from "../telegram/format.ts";
 import { CSS, JS, escHtml, pagina, html } from "./html.ts";
 import { paginaLogin, paginaOmbra, paginaPanoramica, paginaPosizione, paginaStorico } from "./pagine.ts";
-import { leggiModuloParametri, paginaConsumi, paginaImpostazioni, paginaReview } from "./pagine-gestione.ts";
+import { leggiModuloParametri, paginaConsumi, paginaImpostazioni, paginaReview, paginaReviewDettaglio } from "./pagine-gestione.ts";
 import { chiudi, errore, modificaLivelli, passaATrailing } from "./azioni.ts";
 import { csvSpaccato, estremi, filtra, PERIODI, type PeriodoId } from "./consumi.ts";
 import { svuotaCache } from "./dati.ts";
@@ -78,7 +78,13 @@ export function avviaDashboard(ctx: Ctx, o: OpzioniServer) {
     // protezione dal DNS rebinding: solo host locali
     if (!hostOk.has(req.headers.get("host") ?? "")) return new Response("Host non ammesso", { status: 421 });
     if (url.pathname === "/style.css") return new Response(CSS, { headers: { "content-type": "text/css; charset=utf-8", "cache-control": "max-age=300" } });
-    if (url.pathname === "/font/geologica.ttf") return new Response(Bun.file(path.join(import.meta.dir, "assets", "Geologica.ttf")), { headers: { "content-type": "font/ttf", "cache-control": "max-age=86400" } });
+    const FONT: Record<string, string> = { "/font/display.ttf": "WixMadeforDisplay.ttf", "/font/text.ttf": "WixMadeforText.ttf" };
+    if (FONT[url.pathname]) return new Response(Bun.file(path.join(import.meta.dir, "assets", FONT[url.pathname]!)), { headers: { "content-type": "font/ttf", "cache-control": "max-age=86400" } });
+    if (url.pathname === "/client.js" || url.pathname === "/client.css") {
+      const file = Bun.file(path.join(import.meta.dir, "assets", url.pathname.slice(1)));
+      if (!(await file.exists())) return new Response("", { status: 404 });
+      return new Response(file, { headers: { "content-type": url.pathname.endsWith(".js") ? "text/javascript; charset=utf-8" : "text/css; charset=utf-8", "cache-control": "max-age=300" } });
+    }
     if (url.pathname === "/app.js") return new Response(JS, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "max-age=300" } });
 
     if (req.method === "POST") {
@@ -128,7 +134,8 @@ export function avviaDashboard(ctx: Ctx, o: OpzioniServer) {
     if (p === "/storico") return htmlResp(paginaStorico(ctx, s.csrf, url.searchParams));
     if (p === "/ombra") return htmlResp(paginaOmbra(ctx, s.csrf));
     if (p === "/review") return htmlResp(paginaReview(ctx, s.csrf, flash));
-    if (p === "/impostazioni") return htmlResp(paginaImpostazioni(ctx, s.csrf, flash));
+    if (p.startsWith("/review/")) return htmlResp(paginaReviewDettaglio(ctx, s.csrf, decodeURIComponent(p.slice(8))));
+    if (p === "/impostazioni") return htmlResp(paginaImpostazioni(ctx, s.csrf, flash, undefined, url.searchParams.get("scheda")));
     if (p === "/consumi") return htmlResp(await paginaConsumi(ctx, s.csrf, url.searchParams));
     if (p === "/consumi.csv") {
       const q = url.searchParams;
@@ -201,16 +208,17 @@ export function avviaDashboard(ctx: Ctx, o: OpzioniServer) {
         case "/azione/parametri/anteprima": {
           const P = loadParams(ctx.paths, ctx.now()).params;
           const a = leggiModuloParametri(f, P.valori());
-          return htmlResp(paginaImpostazioni(ctx, s.csrf, null, a));
+          return htmlResp(paginaImpostazioni(ctx, s.csrf, null, a, f.get("scheda")));
         }
         case "/azione/parametri/salva": {
           const P = loadParams(ctx.paths, ctx.now()).params;
           const a = leggiModuloParametri(f, P.valori());
-          if (a.errori.length) return flash(false, a.errori.join(" "), "/impostazioni");
+          const torna = `/impostazioni?scheda=${encodeURIComponent(f.get("scheda") ?? "")}`;
+          if (a.errori.length) return flash(false, a.errori.join(" "), torna);
           const r = saveParams(ctx.paths, a.modifiche, { autore: "utente", versioneAttesa: Number(f.get("attesa")), now: ctx.now() });
-          if (!r.ok) return flash(false, r.errori.join(" "), "/impostazioni");
+          if (!r.ok) return flash(false, r.errori.join(" "), torna);
           await notifica(`parametri cambiati (${r.params.versione}): ${r.modifiche.map((m) => `${m.chiave} ${m.da} → ${m.a}`).join("; ")}`);
-          return flash(true, `Salvata la ${r.params.versione}: vale dalla prossima sveglia.`, "/impostazioni");
+          return flash(true, `Salvata la ${r.params.versione}: vale dalla prossima sveglia.`, torna);
         }
       }
       return htmlResp(pagina("Non trovato", "", html`<h1>Azione sconosciuta</h1>`), 404);

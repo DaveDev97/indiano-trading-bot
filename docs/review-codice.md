@@ -396,3 +396,27 @@ Limiti di questa sessione:
   - il primo giro ha trovato il 400 su `portfolio/history` (decisione 27) e il "SPY oggi" sbagliato (decisione 28);
   - il secondo giro è stato pulito: configurazione del conto `no_shorting=true`, `max_margin_multiplier=1`; cervello reale ok, 0,007 $; 0 candidati su 21 (nessuno supera i segnali d'ingresso); nessun ordine.
 - **Dashboard reale:** le pagine rispondono 200 con i dati del conto e la watchlist reale.
+
+## Dashboard: Dusk, bklit e motion
+
+**Corretto?**
+- I grafici bklit si montano come isole sopra un grafico SVG di riserva generato dal server. Provato in Edge senza interfaccia: 5 isole su 5 montate, nessun errore in console (dopo aver tolto le barre orizzontali con i negativi).
+- Il server non importa React: le dipendenze riguardano solo il bundle del browser.
+- La CSP resta `script-src 'self'`, perché il bundle è servito dalla dashboard.
+
+**Funziona?**
+- 168 test, compresi i nuovi: review cliccabile, schede, spiegazioni, modello osservato, menu del telefono, bundle servito e isole nella pagina.
+- Viste in browser vero: panoramica a 1440 px e a 390 px, impostazioni, dettaglio della review.
+
+**Aiuta a capire?**
+- Il grafico principale è il rendimento contro SPY.
+- La curva è monotona, quindi non disegna oscillazioni che nei dati non ci sono.
+- La ciambella ha una legenda con valori e percentuali: l'identità non dipende dal solo colore.
+
+**Sicuro?**
+- Le nuove dipendenze girano solo nel browser della dashboard, su dati già mostrati in pagina; nessun segreto passa da loro.
+- Rischio residuo: il bundle compilato è codice di terzi (React, motion, d3, bklit) che va aggiornato quando escono correzioni di sicurezza.
+
+**Limiti:**
+- Il bundle pesa 503 KB.
+- Bun compila due file di bklit nella modalità JSX "classica": funzionano, ma è un'avvertenza da rivedere a ogni aggiornamento di bklit.

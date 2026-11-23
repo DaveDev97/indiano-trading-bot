@@ -189,8 +189,11 @@ add({ chiave: "notifiche.telegram", gruppo: "notifiche", descrizione: "Invia i m
 add({ chiave: "notifiche.posizioniNelResoconto", gruppo: "notifiche", descrizione: "Mostra le posizioni nel messaggio di fine sveglia", tipo: "booleano", iniziale: true, categoria: "altro" });
 
 // ---------- AI (§8.7) ----------
-add({ chiave: "ai.modelloDecisioni", gruppo: "ai", descrizione: "Modello per le decisioni delle sveglie (--model)", tipo: "scelta", iniziale: "predefinito", opzioni: ["predefinito", "haiku", "sonnet", "opus", "fable"], categoria: "altro" });
-add({ chiave: "ai.modelloReview", gruppo: "ai", descrizione: "Modello per la review periodica (--model)", tipo: "scelta", iniziale: "predefinito", opzioni: ["predefinito", "haiku", "sonnet", "opus", "fable"], categoria: "altro" });
+/** Modelli che si possono scegliere (--model). "predefinito" = quello di Claude Code: la dashboard mostra quale ha usato davvero. */
+export const MODELLI_AI = ["predefinito", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-fable-5-2"];
+add({ chiave: "ai.modelloDecisioni", gruppo: "ai", descrizione: "Modello per le decisioni complesse: sveglie di apertura e metà seduta, dove si comprano e vendono titoli", tipo: "scelta", iniziale: "claude-opus-5-5", opzioni: MODELLI_AI, categoria: "altro" });
+add({ chiave: "ai.modelloSemplici", gruppo: "ai", descrizione: "Modello per i compiti semplici: briefing e chiusura (piano e resoconto, nessun ordine)", tipo: "scelta", iniziale: "claude-sonnet-5-5", opzioni: MODELLI_AI, categoria: "altro" });
+add({ chiave: "ai.modelloReview", gruppo: "ai", descrizione: "Modello per la review periodica (analisi dei risultati e proposte)", tipo: "scelta", iniziale: "claude-opus-5-5", opzioni: MODELLI_AI, categoria: "altro" });
 add({ chiave: "ai.tettoDecisione", gruppo: "ai", descrizione: "Tetto di spesa stimata per una chiamata di decisione (--max-budget-usd)", tipo: "numero", iniziale: 1, min: 0.05, max: 10, passo: 0.05, categoria: "altro", unita: "$" });
 add({ chiave: "ai.tettoReview", gruppo: "ai", descrizione: "Tetto di spesa stimata per una chiamata di review (--max-budget-usd)", tipo: "numero", iniziale: 3, min: 0.1, max: 20, passo: 0.1, categoria: "altro", unita: "$" });
 add({ chiave: "ai.budgetMensile", gruppo: "ai", descrizione: "Budget mensile stimato", tipo: "numero", iniziale: 30, min: 1, max: 1000, passo: 1, categoria: "altro", unita: "$" });

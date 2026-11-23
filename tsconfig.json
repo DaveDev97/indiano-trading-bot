@@ -6,7 +6,10 @@
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "jsx": "react-jsx",
+    "baseUrl": ".",
+    "paths": { "@/*": ["./src/dashboard/client/bklit/*"] }
   },
-  "include": ["src", "tests", "secrets.example.ts"]
+  "include": ["src", "tests", "scripts", "secrets.example.ts"]
 }

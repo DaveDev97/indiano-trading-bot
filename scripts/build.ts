@@ -15,7 +15,7 @@ const versione: string = pkg.version ?? "0.0.0";
 const cartella = `indiano-trading-${versione}`;
 
 const CARTELLE = ["src", "tests", "docs", "scripts"];
-const FILE = ["package.json", "tsconfig.json", "secrets.example.ts", "README.md", "Contratto.md", "CLAUDE.md"];
+const FILE = ["package.json", "bun.lock", "tsconfig.json", "secrets.example.ts", "README.md", "Contratto.md", "CLAUDE.md"];
 const VIETATI = [/(^|\/)secrets\.ts$/, /^(state|logs|cache|fake|build|node_modules|\.git)\//, /\.env/, /\.tmp-/];
 const SOLO_WINDOWS = [/\.ps1$/, /\.cmd$/];
 const SOLO_LINUX = [/\.sh$/];
@@ -30,6 +30,9 @@ function elenca(dir: string): string[] {
   return out;
 }
 
+for (const f of ["client.js", "client.css"]) {
+  if (!fs.existsSync(path.join(RADICE, "src", "dashboard", "assets", f))) throw new Error(`manca src/dashboard/assets/${f}: lancia prima bun install e bun run client`);
+}
 const tutti = [...CARTELLE.flatMap(elenca), ...FILE.filter((f) => fs.existsSync(path.join(RADICE, f)))];
 for (const f of tutti) if (VIETATI.some((r) => r.test(f))) throw new Error(`build interrotta: il file ${f} non deve finire in un pacchetto`);
 

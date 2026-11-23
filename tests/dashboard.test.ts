@@ -191,3 +191,90 @@ describe("consumi AI (test 44, 47)", () => {
     rmRoot(ctx.paths);
   });
 });
+
+import { maybeRunReview } from "../src/learning/review.ts";
+import { FakeBrain } from "../src/brain/fake.ts";
+import { saveParams, loadParams } from "../src/params/params.ts";
+describe("dashboard: review cliccabili, impostazioni a schede, modello usato", () => {
+  test("la review si apre dal suo elenco e mostra cosa è stato fatto", async () => {
+    const ctx = makeCtx({ now: "2026-11-24T15:00:00Z", brain: new FakeBrain() });
+    const rv = (await maybeRunReview(ctx, { force: true })).review!;
+    const { d, base, login } = await avvia(ctx);
+    const s = await login();
+    const elenco = await (await fetch(`${base}/review`, { headers: { cookie: s.cookie } })).text();
+    expect(elenco).toContain(`href="/review/${rv.id}"`);
+    const r = await fetch(`${base}/review/${rv.id}`, { headers: { cookie: s.cookie } });
+    expect(r.status).toBe(200);
+    const t = await r.text();
+    expect(t).toContain("Cosa dice la review");
+    expect(t).toContain("Cosa è stato provato");
+    expect(t).toContain("Campione piccolo");
+    d.stop();
+    rmRoot(ctx.paths);
+  });
+  test("impostazioni: una scheda alla volta, con spiegazione della scheda e una «i» per parametro", async () => {
+    const { d, base, login, ctx } = await avvia();
+    const s = await login();
+    const t = await (await fetch(`${base}/impostazioni?scheda=rischio`, { headers: { cookie: s.cookie } })).text();
+    expect(t).toContain('name="p:rischio.peso"');
+    expect(t).not.toContain('name="p:segnali.adxMin"'); // altra scheda: non c'è
+    expect(t).toContain("Quanto si rischia");
+    expect((t.match(/class="info"/g) ?? []).length).toBe(12);
+    expect(t).toContain('aria-current="page">Rischio');
+    // salvare dalla scheda torna alla stessa scheda
+    const r = await fetch(`${base}/azione/parametri/salva`, { method: "POST", redirect: "manual", body: new URLSearchParams({ csrf: s.csrf, attesa: "1", scheda: "rischio", "p:rischio.gapMaxAtr": "1.5" }), headers: { cookie: s.cookie, "content-type": "application/x-www-form-urlencoded" } });
+    expect(r.headers.get("location")).toBe("/impostazioni?scheda=rischio");
+    expect(loadParams(ctx.paths).params.n("rischio.gapMaxAtr")).toBe(1.5);
+    d.stop();
+    rmRoot(ctx.paths);
+  });
+  test("modelli AI: Opus per le decisioni, Sonnet per i compiti semplici; con «predefinito» dice quale ha usato", async () => {
+    const { d, base, login, ctx } = await avvia();
+    const s = await login();
+    let t = await (await fetch(`${base}/impostazioni?scheda=ai`, { headers: { cookie: s.cookie } })).text();
+    expect(t).toContain("usa claude-opus-5-5");
+    expect(t).toContain("usa claude-sonnet-5-5");
+    saveParams(ctx.paths, { "ai.modelloSemplici": "predefinito" }, { autore: "test", versioneAttesa: loadParams(ctx.paths).params.file.versione });
+    t = await (await fetch(`${base}/impostazioni?scheda=ai`, { headers: { cookie: s.cookie } })).text();
+    expect(t).toContain("modello non ancora noto");
+    appendUsage(ctx.paths, { ...riga("2026-11-24T08:31:00Z", "decisione-briefing", 0.01), perModello: { "claude-haiku-5-5": { inputTokens: 10, outputTokens: 5, cacheReadInputTokens: 0, cacheCreationInputTokens: 0, costUSD: 0.0001 }, "claude-sonnet-5-5": { inputTokens: 900, outputTokens: 300, cacheReadInputTokens: 0, cacheCreationInputTokens: 0, costUSD: 0.009 } } });
+    t = await (await fetch(`${base}/impostazioni?scheda=ai`, { headers: { cookie: s.cookie } })).text();
+    expect(t).toContain("predefinito: ha usato claude-sonnet-5-5");
+    d.stop();
+    rmRoot(ctx.paths);
+  });
+  test("menu: su telefono c'è il pulsante che apre l'elenco delle pagine", async () => {
+    const { d, base, login, ctx } = await avvia();
+    const s = await login();
+    const t = await (await fetch(`${base}/`, { headers: { cookie: s.cookie } })).text();
+    expect(t).toContain('class="menu-t"');
+    expect(t).toContain('<label for="menu" class="menu-l">Menu</label>');
+    const css = await (await fetch(`${base}/style.css`)).text();
+    expect(css).toContain(".menu-t:checked~nav{display:flex}");
+    expect((await fetch(`${base}/font/text.ttf`)).headers.get("content-type")).toBe("font/ttf");
+    d.stop();
+    rmRoot(ctx.paths);
+  });
+});
+
+describe("dashboard: grafici bklit e motion", () => {
+  test("il bundle del browser è servito e le pagine contengono le isole con il grafico di riserva", async () => {
+    const sc = scenario({ simboli: [["AAA", "Technology"]] });
+    const ap = sc.slot("apertura");
+    sc.setNowAt(ap);
+    await eseguiSveglia(sc.ctx, { slot: ap, forzata: false });
+    const { d, base, login } = await avvia(sc.ctx);
+    const s = await login();
+    const js = await fetch(`${base}/client.js`);
+    expect(js.status).toBe(200);
+    expect(js.headers.get("content-type")).toContain("javascript");
+    expect((await js.text()).length).toBeGreaterThan(100_000);
+    expect((await fetch(`${base}/client.css`)).status).toBe(200);
+    const t = await (await fetch(`${base}/`, { headers: { cookie: s.cookie } })).text();
+    expect(t).toContain('<script type="module" src="/client.js"></script>');
+    expect(t).toContain('data-bklit="torta"');
+    expect(t).toMatch(/<div class="isola" data-bklit="[a-z]+" data-props="[^"]+"><div class="riserva"><svg/);
+    d.stop();
+    rmRoot(sc.ctx.paths);
+  });
+});

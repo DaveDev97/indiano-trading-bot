@@ -78,3 +78,17 @@ describe("parametri", () => {
     rmRoot(p);
   });
 });
+
+import { spiegazione, SPIEGAZIONE_GRUPPO } from "../src/config/spiegazioni.ts";
+import { GRUPPI } from "../src/config/parametri.ts";
+describe("spiegazioni delle impostazioni", () => {
+  test("ogni scheda e ogni parametro hanno una spiegazione vera (non la sola descrizione)", () => {
+    for (const g of GRUPPI) expect(SPIEGAZIONE_GRUPPO[g.id].length).toBeGreaterThan(20);
+    for (const d of PARAM_DEFS) {
+      const s = spiegazione(d.chiave);
+      expect(s.length).toBeGreaterThan(30);
+      expect(s).not.toBe(d.descrizione);
+    }
+    expect(spiegazione("fond.growth.roe.min")).toContain("ROE");
+  });
+});

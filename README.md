@@ -37,7 +37,7 @@ Il "cervello" è Claude Code in modalità non interattiva (`claude -p`). Riceve 
   Poi lancia `claude setup-token` per ottenere il token.
 - Un conto **paper** Alpaca, un bot Telegram (da BotFather) e una chiave Finnhub gratuita.
 
-Il codice non ha dipendenze npm: niente `npm install`.
+Il motore non ha dipendenze npm. La dashboard usa i grafici di [bklit](https://bklit.com) e [motion](https://motion.dev), già compilati in `src/dashboard/assets/`: per usare il bot non serve `bun install`.
 
 **Raspberry Pi 4B:** serve un sistema a **64 bit** (Raspberry Pi OS 64-bit o Ubuntu arm64), perché Bun non gira a 32 bit. Il Pi deve restare acceso, e i timer usano sempre l'ora di Roma qualunque sia il fuso del sistema.
 
@@ -93,11 +93,11 @@ Una sveglia partita con più di 20 minuti di ritardo è "saltata": si segnala e 
 ## Dove guardare
 
 - **Telegram**: un messaggio a fine sveglia, gli allarmi ⚠ a parte, la scansione del sabato, la review con i pulsanti Approva/Rifiuta.
-- **Dashboard**:
+- **Dashboard** (tema Dusk, grafici bklit animati con motion, utilizzabile anche da telefono):
   - *Panoramica*: patrimonio contro SPY e riquadri delle posizioni;
   - *Storico* e *Ombra*: le operazioni ombra sono simulate e sempre separate;
-  - *Review*: proposte e versioni dei parametri;
-  - *Impostazioni*;
+  - *Review*: elenco cliccabile, con il dettaglio di cosa è stato provato e perché; proposte e versioni dei parametri;
+  - *Impostazioni*, a schede, con una spiegazione per ogni scheda e la «i» accanto a ogni parametro;
   - *Consumi AI*: il costo è una stima del client, non l'importo fatturato.
 - **File**: `logs/<id-sveglia>.log` per ogni sveglia, `state/journal/` per il diario (solo in aggiunta).
 
@@ -121,7 +121,9 @@ L'elenco completo è in fondo a [docs/review-codice.md](docs/review-codice.md).
 
 ## Per chi sviluppa
 
-- Bun + TypeScript, zero dipendenze, test con `bun test`.
+- Bun + TypeScript. Il motore non ha dipendenze; il lato browser della dashboard sì (React, motion, d3, componenti bklit copiati in `src/dashboard/client/bklit/`, licenza MIT).
+- Dopo una modifica ai grafici: `bun install`, poi `bun run client` (ricompila `src/dashboard/assets/client.js` e `client.css`, che vanno nel commit).
+- Test con `bun test`.
 - Struttura in `src/` (config, params, broker, data, scan, signals, cage, run, brain, journal, learning, telegram, dashboard, util).
 - Come lavorare sul codice: [CLAUDE.md](CLAUDE.md).
 - Revisione modulo per modulo: [docs/review-codice.md](docs/review-codice.md).

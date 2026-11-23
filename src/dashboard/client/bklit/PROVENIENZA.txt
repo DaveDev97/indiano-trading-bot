@@ -1,0 +1,1 @@
+Copiato da https://github.com/bklit/bklit-ui (packages/ui/src/charts), commit 76299da6981e2494836be5ce842720a7fb057891 del 2026-11-15. Licenza MIT: vedi LICENSE.
