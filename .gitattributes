@@ -1,0 +1,5 @@
+# Fine riga fissa: gli script Linux devono avere LF, quelli Windows CRLF
+*.sh text eol=lf
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.ts text eol=lf

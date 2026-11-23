@@ -1,0 +1,398 @@
+# Auto-review del codice
+
+Una sezione per modulo, nell'ordine di costruzione. Risposte brevi, senza cortesie.
+
+## 1. Utilità e configurazione
+
+**Corretto?**
+- Fusi orari: solo `Intl.DateTimeFormat`. `zonedToUtc` fa due iterazioni, quindi è corretto anche vicino ai cambi d'ora. Test sul 16/03/2026 (apertura 14:40 Roma), sul 24/09/2026 (15:40) e sulla mezzanotte dei giorni di cambio dell'ora legale.
+- Ora inesistente (es. 02:30 Roma del 29/03): `zonedToUtc` restituisce l'istante spostato di un'ora. Non capita con gli orari del bot (09:30 Roma, orari NY in seduta).
+- Scrittura atomica: file temporaneo + `fsync` + `rename`, con nuovi tentativi su `EPERM`/`EBUSY` (antivirus su Windows).
+- File corrotto: `readJsonSafe` distingue "assente" da "corrotto". Nel JSONL le righe corrotte si saltano e si contano.
+- Parametri: versione N+1 solo se quella attuale è ancora N (sotto `params.lock`). Valori fuori intervallo rifiutati. `maxPosizioni` è limitato a 5 anche in lettura.
+
+**Funziona?** 20 test eseguiti con `bun test`: tempo, redact, atomico, lock brevi, JSONL, parametri (conflitto, ripristino, file corrotto).
+
+**Aiuta a guadagnare / capire?** Fornisce la base per registrare la versione dei parametri ovunque e non perdere dati. Non c'è rischio di ordini doppi in questo modulo.
+
+**Sicuro?**
+- `redact()` oscura i segreti registrati più alcuni schemi riconoscibili: token Telegram anche dentro `bot<TOKEN>/`, `sk-ant-…`, header Alpaca, `token=`.
+- Il logger e il JSONL passano sempre da `redact`.
+- Limite: un segreto di meno di 6 caratteri non viene registrato, per evitare falsi positivi. La password della dashboard deve averne almeno 12.
+
+## 2. Broker e dati (veri e finti)
+
+**Corretto?**
+- `AlpacaBroker` ha l'URL paper come costante. Rifiuta le chiavi `AK…` anche se costruito direttamente.
+- `paperSafetyProblems` controlla `secrets.ts` (ogni stringa) e tutte le variabili d'ambiente in cerca di host Alpaca diversi da paper e data.
+- Numeri convertiti da stringa in un solo punto (`parseOrder`).
+- Prezzi formattati con 2 decimali da 1 $ in su e 4 sotto. Alpaca rifiuta il sotto-centesimo (verificato con la sonda): l'arrotondamento lo fa la gabbia, prima.
+- Ordini aperti letti in forma piatta (`nested=false`, gambe incluse) e deduplicati per id.
+- `done_for_day` è trattato come aperto: per le protezioni è l'ipotesi prudente.
+- Candele: `closedBars` scarta la seduta in corso finché non sono passati 16 minuti dalla chiusura (ritardo SIP). Test con una candela parziale.
+- Finnhub: chiave nell'header (non nell'URL); limitatore a 48/min e 25/s; 429 → attesa di 61 s.
+
+**Funziona?**
+- 18 test sul broker finto: bracket, OCO, trailing, 403 con protezioni aperte, 422 sul duplicato, sotto-centesimo, mercato chiuso, persistenza.
+- Sonda reale eseguita il 23/11/2026: tutti i campi verificati e scritti in `docs/campi-dati.md`.
+- Rete che cade: `httpJson` distingue timeout, rete e HTTP. Chi chiama decide; per l'invio degli ordini il timeout non si riprova (modulo 6).
+
+**Aiuta a guadagnare / capire?** Il broker finto riproduce i comportamenti che fanno perdere soldi: 403 sulle vendite, gambe eseguite durante la cancellazione, timeout con ordine arrivato. Così i test li coprono.
+
+**Sicuro?**
+- Gli errori HTTP portano solo origine e percorso dell'URL, oscurati.
+- La sonda scrive nomi e tipi, mai i valori del conto. Unica eccezione: i flag di configurazione (`no_shorting`, `max_margin_multiplier`), che non sono sensibili.
+- Rischio residuo: la sonda invia un ordine limit di prova (SPY a 1 $) sul conto paper e lo cancella subito. Si salta con `--senza-ordini`.
+
+## 3. Indicatori
+
+**Corretto?**
+- SMA, ATR e ADX/DI di Wilder (prima somma, poi lisciatura `S − S/n + x`); Donchian e volume medio sulle sedute *precedenti*; RS allineata per data; resistenze come gruppi di ≥ 2 massimi locali entro l'1,5%.
+- Valori di riferimento:
+  - SMA e ATR calcolati a mano;
+  - ADX = 100 e +DI = 66,67 su una serie sempre crescente (valori analitici);
+  - coincidenza con un'implementazione indipendente nella forma "a medie" di Wilder.
+- Limite onesto: nei test non c'è una tabella numerica pubblicata (es. il foglio di calcolo di StockCharts). Non la ricordo con certezza e non ho voluto inventarla.
+- Rottura di resistenza: conta solo se nessuna chiusura successiva all'ultimo massimo del gruppo aveva già superato la soglia. Senza questa regola un titolo salito mesi fa "romperebbe" ogni giorno.
+
+**Funziona?** 12 test, tutti verdi.
+
+**Aiuta a guadagnare / capire?**
+- I segnali sono deterministici e salvati per seduta, quindi riproducibili.
+- Il controllo del prezzo (gap, SMA50, livello rotto) evita di comprare un'apertura già scappata o una rottura fallita.
+
+**Sicuro?** Non tocca rete né segreti.
+
+## 4. Scansione
+
+**Corretto?**
+- Universo: asset attivi, negoziabili, `us_equity`, NYSE/NASDAQ.
+- Prefiltro con candele Alpaca chiuse: prezzo ≥ 5 $ e controvalore medio a 20 sedute ≥ 20 mln $. Così Finnhub viene interrogato solo sui titoli liquidi.
+- ETF esclusi perché Finnhub non restituisce il profilo. Industria non mappata = titolo escluso e citato negli avvisi.
+- Profili:
+  - regola del 70% sui criteri *applicabili*, arrotondando per eccesso;
+  - "non applicabile" e "non disponibile" sono tenuti distinti;
+  - P/E e P/FCF negativi = non superato;
+  - PEG da `pegTTM`, che la sonda ha trovato in 20 titoli su 20; se manca, PEG storico. Con crescita negativa il PEG storico è "non superato".
+- Classifica: percentili per settore e profilo (sotto 5 titoli si usa tutto il profilo); vale il profilo migliore.
+- Zona grigia: un solo criterio mancato, entro un passo della soglia.
+- Settori deboli: migliori 3 per settore.
+- Watchlist scritta in modo atomico. Se più del 10% dei titoli non ha dati, è marcata "incompleta" e lo dice.
+
+**Funziona?**
+- 11 test: payout 120%, banca, criterio mancante, 70%, PEG storico, utili negativi, zona grigia, nessun settore forte, scansione completa, ripresa dopo un'interruzione (solo le 23 richieste mancanti).
+- Non ancora eseguita sul mercato vero: con circa 2.500 titoli servono 60–100 minuti. La lancio alla fine.
+
+**Aiuta a guadagnare / capire?**
+- I criteri non disponibili sono contati e riportati, non considerati superati.
+- Rischio di autoinganno: la zona grigia e i settori deboli entrano nella watchlist, ma sono marcati e **non si comprano** (lo verifica la gabbia, modulo 5).
+
+**Sicuro?** Lock separato (`scan.lock`), quindi non blocca le sveglie. La cache su disco non contiene segreti.
+
+## 5. Gabbia
+
+**Corretto?**
+- Prezzi:
+  - stop arrotondato per difetto, take profit per eccesso, 2 decimali da 1 $ (4 sotto);
+  - stop verificato ad almeno 0,01 $ sotto il prezzo.
+- Dimensionamento: `floor(min(peso × patrimonio, cash × 0,99) / prezzo)`. Il cash è diminuito degli acquisti aperti (+1% di margine per lo slittamento) e di quelli inviati nella stessa sveglia (`CassaSveglia`, mai sotto zero).
+- Gabbia:
+  - compra solo tra i candidati di questa sveglia;
+  - gli acquisti aperti contano come posizioni; massimo 5 posizioni e 2 per settore;
+  - briefing e chiusura non comprano; metà seduta compra solo se si è liberato un posto;
+  - vende solo le posizioni con un'uscita debole segnalata, e solo all'apertura;
+  - decisioni doppie scartate.
+- Pause dagli ordini chiusi di Alpaca (30 giorni), non dal testimone:
+  - stop in perdita: 10 sedute; altre uscite: 3;
+  - se il prezzo d'acquisto non si trova, uno stop vale come stop in perdita (prudenza).
+- Pause dai rifiuti, lette dal diario: stessa seduta bloccata; 2 rifiuti per lo stesso motivo → 5 sedute.
+- Freno:
+  - massimo dal `portfolio/history` con data di inizio esplicita (avvio o ultimo sblocco);
+  - resta attivo finché non si sblocca dalla dashboard;
+  - lo sblocco riporta il massimo al patrimonio attuale;
+  - se il file va perso, si ricostruisce dal diario.
+
+**Funziona?** 13 test (numeri 13, 16, 18, 34, 38 del contratto), più i test della sveglia che usano la gabbia dal vivo.
+
+**Aiuta a guadagnare / capire?**
+- Limita le perdite: il freno, le pause dopo uno stop e il limite per settore.
+- Rischio residuo: le pause dopo i rifiuti valgono anche per i rifiuti della gabbia. È più prudente (meno ordini), ma un candidato buono può restare fermo 5 sedute. Vedi decisioni.
+
+**Sicuro?** Nessun ordine parte da qui. La gabbia restituisce solo decisioni filtrate.
+
+## 6. Sveglia
+
+**Corretto?**
+- Ordine del giro come nel §6, con una sola differenza voluta: protezioni e uscite forti si eseguono **prima** del cervello. Così vengono eseguite anche se il cervello fallisce.
+- Lock con battito ogni 30 s, PID + ora di avvio (letta con `Get-Process`), id degli ordini scritti nel lock prima dell'invio.
+- Lock morto: guardia atomica, rinomina, riconciliazione degli id. Anche i `run.lock.morto-*` rimasti da recuperi incompleti vengono riconciliati.
+- Calendario:
+  - orari NY dal calendario Alpaca, id in ora di Roma;
+  - mezze giornate: resta la seconda di due sveglie a meno di 30 minuti;
+  - una sveglia è "saltata" oltre 20 minuti dall'orario previsto, e lo si segnala una volta sola;
+  - weekend e festivi non generano sveglie.
+- Esecutore:
+  - verifica per id **prima** di inviare;
+  - timeout: niente nuovo invio, solo verifica per id (3 volte);
+  - se l'id non si può verificare, non invia.
+- Vendita: cancella, attende la conferma (10 s), rilegge la posizione, vende solo `min(qty, qty_available)`.
+- Protezioni:
+  - si confronta l'ordine con il **piano**, non con i parametri;
+  - livelli diversi: PATCH; mancante o quantità diversa: cancella e ricrea (OCO o trailing), al massimo 3 tentativi;
+  - più di 80 giorni: si ricrea all'apertura;
+  - stop mobile ricreato con `trail_price` dal massimo registrato;
+  - prezzo oltre lo stop: vendita (mai al briefing).
+- Al briefing le protezioni esistenti non si modificano (solo la ricreazione di quelle mancanti), come dice il §5.
+- Piano di uscita salvato **prima** dell'acquisto: se il processo muore, la sveglia dopo sa come proteggere.
+- Con una posizione non protetta gli acquisti si bloccano finché non è risolta: è più prudente del contratto, vedi decisioni.
+
+**Funziona?**
+- 24 test del nucleo (calendario, lock, testimone, esecutore, protezioni).
+- 17 test di accettazione della sveglia completa, con broker, dati e cervello finti: numeri 1, 2, 3, 8, 9, 16, 17, 18, 19, 20, 24, 34, 37, 46 del contratto.
+- Rete che cade a metà:
+  - ogni chiamata al broker in apertura è in un `try` → allarme e uscita;
+  - un errore imprevisto in mezzo → allarme, lock rilasciato. La sveglia successiva ricostruisce tutto dal broker.
+
+**Aiuta a guadagnare / capire?**
+- Rischi coperti: ordini doppi (id + lock), posizioni senza protezione (controllo a ogni sveglia), dati vecchi (watchlist con più di 8 giorni, candela in corso scartata).
+- Rischio residuo: tra l'esecuzione del bracket e l'attivazione delle gambe Alpaca, la protezione dipende dal broker.
+
+**Sicuro?** Le azioni passano tutte dall'esecutore sotto lock. I log passano da `redact`.
+
+## 7. Cervello
+
+**Corretto?**
+- Comando costruito sui flag letti da `claude -p --help`, quindi senza `--max-turns` (che non esiste) e senza `--bare`.
+- Prompt via stdin, cwd in `%LOCALAPPDATA%\IndianoTrading\brain-cwd`, `--setting-sources project`, `--safe-mode`, `--system-prompt`.
+- La sonda conferma che il cervello non vede `CLAUDE.md` né la memoria dell'utente.
+- Risposta validata a mano: simboli, azioni ammesse, niente quantità.
+- Consumi:
+  - registrati a ogni chiamata, anche fallita;
+  - costo da `total_cost_usd` e token da `modelUsage`;
+  - timeout e costi azzerati → "non misurato" (null), mai zero.
+- Budget:
+  - avvisi all'80% e al 100% una volta per mese;
+  - "sospendi" → il cervello non viene chiamato;
+  - 2 chiamate di fila oltre il tetto → allarme dedicato.
+
+**Funziona?**
+- 11 test (numeri 43, 45, 46 del contratto).
+- Chiamata reale fatta dalla sonda: esito ok, 0,027 $, 3 turni.
+
+**Aiuta a guadagnare / capire?** Il modello sceglie solo tra opzioni già ammesse, e la gabbia ricontrolla tutto. Un errore del modello non può far comprare un titolo fuori lista.
+
+**Sicuro?**
+- Il token OAuth passa nell'ambiente del processo figlio, mai nella riga di comando.
+- Il prompt contiene solo dati di mercato e del conto, mai le chiavi.
+
+## 8. Telegram
+
+**Corretto?**
+- HTML con `&`, `<`, `>` convertiti in ogni testo variabile.
+- Spezzatura sotto i 4096 caratteri tra le righe, senza tagliare le entità.
+- 429 → attesa di `retry_after` (al massimo 2 volte).
+- `send` non lancia mai: un errore va nel log e la sveglia continua (test 9).
+- Pulsanti: `rv:a:<id>` / `rv:r:<id>` (meno di 64 byte). Si accettano solo quelli di `chatId`; l'offset è salvato.
+- Un solo lettore: `leggiPulsanti`, chiamato solo dalla dashboard.
+
+**Funziona?** Test sul pulsante da un'altra chat, sull'approvazione e sul clic riletto (test 28). Il token oscurato anche negli errori di rete è coperto dal test 11 nel modulo 2.
+
+**Aiuta a capire?** Ogni messaggio porta l'id della sveglia e affianca SPY al P&L del giorno.
+
+**Sicuro?** Il token sta solo nell'URL di `fetch`, e ogni errore passa da `redact`.
+
+## 9. Diario, schede, ombra, simulatore
+
+**Corretto?**
+- Diario JSONL solo in aggiunta, sotto lock. Le operazioni ombra stanno in file separati (`ombra-AAAA-MM.jsonl`): non si possono mescolare.
+- Scheda d'ingresso con la fotografia completa: criteri, segnale, forza del settore su tutti e tre i periodi, punteggio, motivazione, versione dei parametri, piano, e 300 candele `all` + 300 candele `split`.
+- Scheda d'uscita: motivo, R, mfe/mae dal percorso salvato, SPY (rettificato per i dividendi) nello stesso periodo, trimestrale.
+- Simulatore:
+  - prima l'uscita con i livelli di ieri, poi il massimo;
+  - stop = min(apertura, stop) e tp = max(apertura, tp); stop e tp nello stesso giorno → stop;
+  - uscita forte all'apertura del giorno dopo; durata massima 250 sedute.
+- Operazioni ombra:
+  - ingresso all'apertura della seduta dopo il segnale, con lo stesso controllo del prezzo;
+  - una ogni 10 sedute per titolo;
+  - le candele si salvano appena lette.
+- Nessun look-ahead: la decisione ombra usa solo il segnale (candele precedenti) e l'apertura del giorno d'ingresso.
+
+**Funziona?** Test 24 (scheda, uscita, "simulazione in corso" che si chiude da sola) e ombra separate. Il simulatore è testato anche dentro i test dell'apprendimento.
+
+**Aiuta a capire?**
+- Rende misurabile tutto, anche le alternative (bracket contro trailing).
+- Rischio di autoinganno: il giorno d'ingresso di un'operazione reale la simulazione considera tutta la candela, anche la parte prima dell'acquisto (ipotesi prudente).
+
+**Sicuro?** Nessun segreto nel diario: le righe passano da `redactJson`.
+
+## 10. Apprendimento
+
+**Corretto?**
+- Statistiche reali e ombra separate.
+- Suddivisioni per profilo, settore, conferme, ADX, motivo di uscita, durata e versione dei parametri.
+- Confronto bracket/trailing solo su risultati simulati.
+- Valutazione dei filtri "per differenza": +R le operazioni aggiunte, −R quelle escluse.
+- Livelli di uscita: ΔR operazione per operazione sugli stessi percorsi, con la stessa unità di R.
+- Controlli:
+  - n ≥ 30;
+  - effetto ≥ 0,1 R;
+  - IC bootstrap corretto con Bonferroni (sul numero di confronti testati) che esclude lo zero nei primi 2/3 e nell'ultimo terzo;
+  - al massimo 2 proposte, un passo ciascuna;
+  - sicurezza mai proposta;
+  - campione piccolo = solo resoconto.
+- **Errore trovato e corretto:** confrontare i livelli di uscita solo sulle simulazioni chiuse era una distorsione di selezione. Con dati casuali il take profit 20→25% passava i controlli nel 15% delle review. Ora le simulazioni aperte si valutano all'ultima chiusura: 0 proposte su 40 review casuali.
+- Approvazione idempotente (lock delle proposte, controllo dello stato e del valore attuale). Scadenza a 7 giorni.
+- Prima riga "rende meno di SPY" dopo 60 sedute di attività.
+
+**Funziona?** 8 test: casuale senza vantaggio, vantaggio reale trovato, campione piccolo, sicurezza, 20/40 sedute, pulsanti, doppia approvazione, scadenza.
+
+**Aiuta a guadagnare / capire?**
+- Il rischio principale è l'autoinganno su campioni piccoli. La combinazione Bonferroni + due metà + soglia di effetto rende rare le proposte (voluto).
+- Limite: le operazioni ombra "quasi" sono correlate con quelle reali (stessi giorni di mercato), quindi il bootstrap per operazione sovrastima l'indipendenza.
+
+**Sicuro?** Le proposte cambiano i parametri solo con `saveParams` (validazione e controllo di versione).
+
+## 11. Dashboard
+
+**Corretto?**
+- Accesso e protezioni:
+  - `Bun.serve` su `127.0.0.1` (costante);
+  - header `Host` controllato, contro il DNS rebinding; `Origin` controllato sui POST;
+  - password da `secrets.ts` (minimo 12 caratteri), confrontata in tempo costante, con blocco di 5 minuti dopo 10 errori;
+  - cookie `HttpOnly; SameSite=Strict`, sessioni in memoria di 12 ore;
+  - CSRF su ogni POST;
+  - CSP senza sorgenti esterne, nessuna libreria esterna.
+- Panoramica:
+  - patrimonio, cash, investito, posti liberi;
+  - P&L di oggi, settimana, mese e dall'inizio, ciascuno affiancato a SPY;
+  - grafico del patrimonio con SPY indicizzati a 100: un solo asse, come richiedono le regole dei grafici;
+  - stato del bot e riquadri delle posizioni con la barra stop/prezzo/take profit.
+- Dettaglio posizione:
+  - perché è stata comprata (criteri, indicatori, conferme, punteggio, motivazione);
+  - protezioni, grafico dall'ingresso con i livelli, profitto atteso;
+  - valore atteso solo con almeno 20 operazioni chiuse, altrimenti "non stimabile";
+  - azioni manuali con conferma; cronologia degli eventi.
+- Storico: filtri; operazioni manuali tenute a parte. Ombra: scheda separata, marcata "simulate".
+- Review: proposte in attesa con Approva/Rifiuta, versioni dei parametri con i loro risultati, ripristino.
+- Impostazioni:
+  - tutti i parametri raggruppati, con descrizione, valore iniziale, intervallo e ultima modifica;
+  - anteprima delle differenze, poi conferma; validazione e conflitto di versione;
+  - interruttori: pausa acquisti, sblocco del freno, ripristino dei valori iniziali.
+- Consumi AI:
+  - riquadri, grafico impilato per tipologia (costo, token o chiamate; giorno, settimana o mese), spaccato con totale = somma delle righe, tabella per modello;
+  - rapporto con il trading, proiezione del mese, ultime 50 chiamate, filtri e CSV;
+  - la nota di onestà sul costo stimato è nella scheda, ben visibile.
+- Azioni manuali: stesso esecutore e stesso lock (attesa fino a 60 s), id `AAAA-MM-GG-SIMBOLO-manual-<codice>` con il codice generato quando la pagina mostra il modulo.
+
+**Funziona?**
+- 10 test: 401 senza sessione, 403 senza CSRF, host estraneo 421, password errata, cookie, nessun segreto nelle pagine, tutte le pagine con dati finti, doppio clic, "bot occupato", chiudi all'apertura, giorno di Roma nei cambi d'ora, totali, CSV identico.
+- Prova dal vivo con `bun run dashboard --fake`: tutte le pagine rispondono 200.
+
+**Aiuta a guadagnare / capire?**
+- Il confronto con SPY è ovunque; le operazioni simulate sono sempre etichettate.
+- Rischio residuo: le sessioni sono in memoria. Un riavvio della dashboard chiede di rifare l'accesso (prudente).
+
+**Sicuro?**
+- Le pagine non contengono segreti (test con un errore che ne contiene uno).
+- Il log di una sveglia si mostra ripassato da `redact`.
+
+## 12. Pianificazione
+
+**Corretto?** `scripts/installa-pianificazione.ps1` registra tre attività:
+- **tick**: ogni 5 minuti, lun–ven 09:00–23:00, riattiva il computer, tempo massimo 20 minuti, `MultipleInstances IgnoreNew`;
+- **scansione**: sabato 10:00, tempo massimo 3 ore (lo `scan` del sabato fa poi il controllo della review);
+- **dashboard**: all'accesso, in un ciclo che la riavvia dopo 15 secondi se si chiude, più il riavvio automatico dell'Utilità di pianificazione.
+- Il PATH dell'attività include `~/.bun/bin` e `~/.local/bin`, perché `claude` va trovato anche fuori da VS Code.
+- `-Rimuovi` cancella le attività.
+
+**Funziona?**
+- Sintassi verificata con il parser di PowerShell. **Non l'ho eseguito**: lo lancia l'utente, come da istruzioni.
+- `tick` e `once` sono provati dal vivo in modalità finta.
+
+**Aiuta?** Senza tempo massimo un tick bloccato fermerebbe tutti i successivi: qui il limite è di 20 minuti.
+
+**Sicuro?**
+- Attività con l'utente interattivo e privilegi limitati: nessuna password salvata.
+- Limite: le attività girano solo con l'utente connesso.
+
+## Bug trovati durante la prova dal vivo (e corretti)
+
+- **Pausa dopo un rifiuto strutturale.** Al briefing il cervello finto proponeva un acquisto, la gabbia lo rifiutava ("il briefing non fa ingressi") e quel rifiuto metteva il titolo in pausa per tutta la seduta. Così non si sarebbe comprato nemmeno all'apertura.
+  - Ora i rifiuti `gabbia-*` restano nel diario e nelle lezioni ma non generano pause.
+  - Aggiunto un test che riproduce il caso.
+- **Sveglie "saltate" alla prima esecuzione.** Alla prima sveglia in assoluto venivano segnalate come saltate le sveglie dei giorni precedenti all'avvio del bot. Ora no.
+- **Messaggio senza il perché.** Il messaggio non diceva perché non c'erano candidati. Ora riporta "candidati ammessi N su M" con i motivi principali degli scarti.
+
+## Insieme
+
+**Corretto?**
+- I 47 test di accettazione del contratto sono coperti da test automatici, tranne:
+  - il **5** "mezza giornata", coperto dal calendario ma non con una sveglia completa;
+  - il **26**, in cui "avviata a 40 sedute" è verificato con `statoReview` e una review reale su dati finti.
+- Il **10** (chiave `AK…` o URL live → il programma non parte) passa da `buildRuntime`: nessun comando reale parte senza `assertPaperSafety`.
+- Problema trovato nell'auto-review finale e corretto: un errore nella scrittura del battito dentro `setInterval` poteva uccidere il processo a metà sveglia. Ora è intercettato.
+- Casi limite gestiti:
+  - dati mancanti → "non disponibile" e nessun acquisto;
+  - mercato chiuso → niente vendite, protezioni lasciate attive;
+  - mezza giornata, ora legale, esecuzione parziale (quantità riletta, protezione ricreata);
+  - timeout (mai un nuovo invio senza verifica per id);
+  - file corrotti (testimone, parametri, piani, freno);
+  - doppio lancio (lock + id deterministici).
+
+**Funziona?**
+- `bun test`: 161 test verdi, stabili su 3 giri consecutivi (compresi i guasti con processi veri uccisi per PID).
+- Prove dal vivo in modalità finta: `scan`, `once` (briefing, apertura, metà seduta), `dashboard`.
+- Prove reali: `probe`, poi la scansione completa e `once --slot briefing` sul conto paper (vedi resoconto finale).
+
+**Aiuta a guadagnare, o almeno a capire se si guadagna?**
+- Ogni resoconto affianca SPY.
+- Reali e ombra sono separati per costruzione: file diversi.
+- La review propone poco, ed è voluto: su dati casuali 0 proposte su 40.
+- Rischi di perdita affrontati: ordini doppi, posizioni non protette, dati vecchi, short accidentali (vendita sempre sulla quantità riletta, `no_shorting` imposto e verificato).
+
+**Sicuro?**
+- Segreti solo importati: nessun valore stampato.
+- `redact` su log, diario, messaggi, pagine ed errori.
+- La dashboard è solo su 127.0.0.1, con password, sessione e CSRF.
+- Ogni ordine passa dall'esecutore sotto lock, sia dalle sveglie sia dalla dashboard.
+
+## Limiti conosciuti
+
+- **Gap di apertura.** Stop e stop mobile scattano solo in seduta regolare: un gap sotto lo stop esce al prezzo di apertura, anche molto più in basso. Il simulatore lo modella (`min(apertura, stop)`); il conto paper non sempre.
+- **Esecuzioni ideali del conto paper.** Alpaca paper esegue senza impatto sul mercato e con slittamento minimo: i risultati reali sarebbero peggiori. L'ombra usa uno slittamento dello 0,1%, che è comunque una stima.
+- **Campioni piccoli.** Con 5 posizioni di settimane servono mesi per 30 operazioni chiuse. Fino ad allora la review fa solo il resoconto. Il bootstrap tratta le operazioni come indipendenti, ma operazioni dello stesso periodo sono correlate (stesso mercato): la confidenza reale è più bassa di quella dichiarata.
+- **Criteri non disponibili con Finnhub gratuito.** Crescita EPS del prossimo anno e dei prossimi 5 anni (stime degli analisti): sempre "non disponibile". FFO dei REIT: il payout dei REIT è "non disponibile". Il PEG arriva da `pegTTM`. I dati Finnhub non sono "point-in-time" e possono essere rivisti.
+- **Fuori da questa versione (§13):** notizie macro e analisi delle notizie; backtest storico sui fondamentali; pattern grafici e trendline; stime degli analisti; accesso alla dashboard da fuori dal computer; acquisti manuali dalla dashboard; conto reale.
+- **Costi AI.** Il costo è una stima del client (Claude Code). Con l'abbonamento è il costo equivalente a consumo, e i limiti dell'abbonamento non si vedono.
+- **Lettura dei pulsanti.** Se la dashboard resta spenta più di 24 ore, i clic su Telegram si perdono: si approva dalla dashboard.
+- **Attività pianificate.** Girano solo con l'utente connesso. "Riattiva il computer" richiede i timer di riattivazione abilitati nelle opzioni di risparmio energia.
+- **Indicatori.** Verificati con valori calcolati a mano, valori analitici e un'implementazione indipendente, non con una tabella numerica pubblicata.
+- **Lunghezza della scansione.** Circa 2.200 titoli dopo il prefiltro: 60–90 minuti con Finnhub gratuito (meno nelle settimane in cui i profili sono in cache).
+
+## Sessione dei guasti (avvocato del diavolo)
+
+Test in `tests/guasti.test.ts`. I guasti 1, 2 e 5 usano processi bun veri, uccisi per PID con SIGKILL (TerminateProcess su Windows), e il riconoscimento reale dei processi (`Get-Process` su Windows, `/proc` su Linux).
+
+| Guasto | Cosa succede davvero | Esito |
+| --- | --- | --- |
+| 1. Kill dopo il primo ordine, poi rilancio | Sul broker 1 acquisto; il lock resta. Al rilancio: lock morto riconosciuto, id riconciliato ("arrivato, filled"), allarme. Alla fine 5 titoli, **ognuno comprato una volta**, tutti protetti. | **Bug trovato:** la posizione comprata prima del kill non aveva la scheda nel diario. Corretto nel codice (decisione 25). |
+| 2. Due sveglie a 0,5 s di distanza | Una "eseguita", l'altra "sveglia già in corso". 5 acquisti, uno per titolo, lock rilasciato. | Tiene. |
+| 3. Alpaca muto per 30 s durante l'invio | Ordine arrivato: 1 sul broker, nessun reinvio. Ordine perso: 0, nessun reinvio. Il giorno dopo un solo ordine per titolo, tutti protetti. | **Bug trovato:** l'allarme diceva "senza risposta" anche per un ordine mai partito. Corretto (decisione 26). |
+| 4a. JSON troncato | Nessun acquisto, protezioni eseguite, allarme, consumo registrato. | Tiene. |
+| 4b. Campo mancante (`reasoning`) | Come sopra ("risposta non valida"). | Tiene. |
+| 4c. Quantità negativa | Il campo viene ignorato: il codice non legge mai quantità dal modello. La quantità è quella calcolata dal dimensionamento. | Non è un problema reale, nessuna modifica. |
+| 5. Kill mentre si salva `baton.json` (6 kill in momenti diversi) | Il testimone si legge sempre. Al massimo resta un file `.tmp-` orfano. | Tiene. I `.tmp` orfani non sono un problema reale: nessuno li legge e nascono solo da un crash. |
+| 6a. Chiusura che "parte" alle 22:05 (solo pianificatore) | Il tick non la esegue (oltre 20 minuti), nessun ordine; il briefing dopo la segnala saltata e non vende. | Tiene. |
+| 6b. Chiusura lanciata a mano alle 22:05 | Nessun ordine a mercato chiuso. La posizione sotto lo stop resta, con allarme "non protetta" e vendita rimandata all'apertura. La chiusura saltata si segnala una volta sola. | Tiene. La prima versione del test si aspettava la segnalazione anche il mattino dopo: era sbagliata l'aspettativa (il contratto dice "si segnala", una volta), non il codice. |
+
+Limiti di questa sessione:
+- Il guasto 3 usa un orologio finto, quindi i 30 s non sono reali. Il client Alpaca vero ha un timeout di 15 s sull'invio e segue la stessa strada (`BrokerError` di tipo timeout).
+- La lettura di `/proc` è testata su Linux con un file di esempio; i kill su Linux li esegue la CI (`ubuntu-latest`, `ubuntu-24.04-arm`).
+
+### Aggiunte dopo la prova reale
+
+- **Guasto 2, ripreso.** Sotto il carico della suite completa il test del doppio lancio è fallito una volta: la seconda istanza aveva letto lo stato prima che la prima finisse e preso il lock dopo. Corretto nel codice (decisione 29), con il test deterministico 2b. Poi 3 giri completi della suite, 161/161 ogni volta.
+- **Prova reale sul conto paper** (`once --slot briefing`, 23/11/2026):
+  - il primo giro ha trovato il 400 su `portfolio/history` (decisione 27) e il "SPY oggi" sbagliato (decisione 28);
+  - il secondo giro è stato pulito: configurazione del conto `no_shorting=true`, `max_margin_multiplier=1`; cervello reale ok, 0,007 $; 0 candidati su 21 (nessuno supera i segnali d'ingresso); nessun ordine.
+- **Dashboard reale:** le pagine rispondono 200 con i dati del conto e la watchlist reale.

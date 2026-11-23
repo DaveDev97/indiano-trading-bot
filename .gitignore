@@ -10,3 +10,9 @@ cache/
 # Bun / Node
 node_modules/
 *.log
+
+# Modalità --fake (stato, log e cache finti)
+fake/
+
+# Pacchetti creati da bun run build
+build/

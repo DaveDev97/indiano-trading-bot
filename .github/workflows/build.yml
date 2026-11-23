@@ -1,0 +1,42 @@
+# Test su Windows e Linux, poi i pacchetti scaricabili:
+#  - ogni push e ogni avvio manuale: pacchetti negli "Artifacts" della run (scheda Actions);
+#  - un tag v* (es. v1.0.0): anche una Release con i due pacchetti e i checksum.
+# I test usano solo broker, dati e cervello finti: nessun segreto serve qui.
+name: build
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.5
+      - run: bun test
+  pacchetti:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.5
+      - run: bun run build --senza-test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: indiano-trading-pacchetti
+          path: build/*
+      - if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" build/* --title "Indiano Trading ${GITHUB_REF_NAME}" --notes "Pacchetti per Windows (.zip) e Linux/Raspberry Pi (.tar.gz). Vedi README."

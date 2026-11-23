@@ -1,0 +1,17 @@
+{
+  "name": "indiano-trading-bot",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "probe": "bun run src/cli/probe.ts",
+    "scan": "bun run src/cli/scan.ts",
+    "tick": "bun run src/cli/tick.ts",
+    "schedule": "bun run src/cli/schedule.ts",
+    "once": "bun run src/cli/once.ts",
+    "review": "bun run src/cli/review.ts",
+    "dashboard": "bun run src/cli/dashboard.ts",
+    "status": "bun run src/cli/status.ts",
+    "build": "bun run scripts/build.ts"
+  }
+}
