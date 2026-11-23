@@ -109,10 +109,12 @@ describe("guasti", () => {
     await Bun.sleep(500);
     const b = lancia(paths.root, APERTURA, "lento");
     const [ra, rb] = await Promise.all([a.fine(), b.fine()]);
+    console.log(`[2] primo: ${ra.fatto} | secondo (0,5 s dopo): ${rb.fatto} | acquisti: ${JSON.stringify([...acquistiPerSimbolo(paths)])}`);
     expect([ra.eseguita, rb.eseguita].filter(Boolean).length).toBe(1);
     const perdente = ra.eseguita ? rb : ra;
-    console.log(`[2] primo: ${ra.fatto} | secondo (0,5 s dopo): ${rb.fatto}`);
-    expect(perdente.fatto).toMatch(/già in corso|nessuna sveglia dovuta/);
+    // tre esiti legittimi per chi arriva secondo: lock occupato, sveglia già segnata come fatta prima di partire,
+    // oppure (sotto carico) lock preso dopo che la prima ha finito: allora il ricontrollo nel lock la ferma
+    expect(perdente.fatto).toMatch(/già in corso|nessuna sveglia dovuta|già eseguita/);
     const per = acquistiPerSimbolo(paths);
     expect([...per.values()].every((n) => n === 1)).toBe(true);
     expect(per.size).toBe(5);
