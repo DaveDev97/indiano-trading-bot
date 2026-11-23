@@ -176,3 +176,9 @@ Formato: data — dubbio — scelta — motivo. Si sceglie sempre l'opzione più
     - Prima: i segnali della seduta erano calcolati una sola volta e riusati anche dopo un cambio di soglie, quindi la sveglia applicava soglie non più attive.
     - Ora: se la versione salvata nei segnali è diversa da quella attiva, si ricalcolano tutti sulle stesse candele chiuse.
     - Più prudente così: le regole applicate sono sempre quelle attive. Le candele non cambiano, quindi non entra nessun dato nuovo.
+
+38. **Pagina "Selezione"** (23/11/2026, richiesta dell'utente; non prevista dal contratto, che resta invariato).
+    - È di sola lettura: nessuna azione, nessun ordine. Mostra la watchlist della scansione: settori contro SPY, l'imbuto dall'universo agli acquistabili, la zona grigia e i titoli buoni in settori deboli.
+    - Il dettaglio di un titolo spiega ogni passo della selezione con i valori veri (filtri dell'universo, forza del settore, criteri del profilo con soglie ed esiti, percentili e classifica), poi i segnali tecnici e i grafici di prezzo e volume.
+    - I segnali sono quelli della seduta salvata, cioè gli stessi che usa la sveglia. Se il titolo non è tra quelli calcolati, si ricalcolano sul momento sulle candele chiuse, con i parametri attivi e una cache di 15 minuti. La pagina dice sempre da dove vengono i dati.
+    - Il grafico del prezzo mostra la variazione rispetto all'ultima chiusura: bklit fa partire l'asse da zero, e così lo zero è il prezzo di oggi.

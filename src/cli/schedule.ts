@@ -4,8 +4,10 @@ import { tick } from "../run/tick.ts";
 import { parseArgs } from "../util/args.ts";
 import { errText, redact } from "../util/redact.ts";
 import { formatRome } from "../util/time.ts";
+import { chiudiSeOrfano } from "../util/process.ts";
 
 const args = parseArgs();
+chiudiSeOrfano();
 const { ctx } = await buildRuntime({ fake: args.flags.has("fake"), nowOverride: args.values.get("ora") });
 console.log("Pianificatore attivo: un tick ogni 30 secondi. Ctrl+C per uscire.");
 let ultimo = "";

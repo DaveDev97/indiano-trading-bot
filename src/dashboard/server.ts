@@ -20,6 +20,7 @@ import { leggiModuloParametri, paginaConsumi, paginaImpostazioni, paginaReview, 
 import { chiudi, errore, modificaLivelli, passaATrailing } from "./azioni.ts";
 import { csvSpaccato, estremi, filtra, PERIODI, type PeriodoId } from "./consumi.ts";
 import { svuotaCache } from "./dati.ts";
+import { paginaSelezione, paginaSelezioneDettaglio } from "./pagine-selezione.ts";
 
 interface Sessione {
   csrf: string;
@@ -131,6 +132,8 @@ export function avviaDashboard(ctx: Ctx, o: OpzioniServer) {
     const p = url.pathname;
     if (p === "/") return htmlResp(await paginaPanoramica(ctx, s.csrf, url.searchParams, flash));
     if (p.startsWith("/posizione/")) return htmlResp(await paginaPosizione(ctx, s.csrf, decodeURIComponent(p.slice(11)).toUpperCase().replace(/[^A-Z0-9.\-]/g, ""), flash));
+    if (p === "/selezione") return htmlResp(paginaSelezione(ctx, s.csrf));
+    if (p.startsWith("/selezione/")) return htmlResp(await paginaSelezioneDettaglio(ctx, s.csrf, decodeURIComponent(p.slice(11)).toUpperCase().replace(/[^A-Z0-9.-]/g, "")));
     if (p === "/storico") return htmlResp(paginaStorico(ctx, s.csrf, url.searchParams));
     if (p === "/ombra") return htmlResp(paginaOmbra(ctx, s.csrf));
     if (p === "/review") return htmlResp(paginaReview(ctx, s.csrf, flash));

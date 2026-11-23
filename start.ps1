@@ -2,6 +2,7 @@
   Indiano Trading Bot - avvio su Windows.
     .\start.ps1                 aiuto e controlli
     .\start.ps1 installa        registra motore, scansione e dashboard nell'Utilità di pianificazione
+    .\start.ps1 avvia           motore e dashboard insieme in questa finestra (Ctrl+C li ferma entrambi)
     .\start.ps1 motore          motore in primo piano (un tick ogni 30 s), senza pianificazione
     .\start.ps1 dashboard       webapp su http://127.0.0.1:8787
     .\start.ps1 <comando> ...   tick, once, scan, review, status, probe, test (le opzioni passano a bun, es. --fake)
@@ -35,11 +36,12 @@ switch ($cmd) {
         $c = Get-Command claude -ErrorAction SilentlyContinue
         if ($c) { Write-Host "claude: $(& $c.Source --version)" } else { Write-Host "claude: NON trovato (serve al cervello: irm https://claude.ai/install.ps1 | iex)" }
         Write-Host ("secrets.ts: " + $(if (Test-Path "secrets.ts") { "presente" } else { "assente (verrà creato dal modello al primo comando)" }))
-        Write-Host "Comandi: installa, disinstalla, motore, dashboard, tick, once, scan, review, status, probe, test, build"
+        Write-Host "Comandi: avvia, installa, disinstalla, motore, dashboard, tick, once, scan, review, status, probe, test, build"
         exit 0
     }
     "installa" { & powershell -ExecutionPolicy Bypass -File ".\scripts\installa-pianificazione.ps1"; exit $LASTEXITCODE }
     "disinstalla" { & powershell -ExecutionPolicy Bypass -File ".\scripts\installa-pianificazione.ps1" -Rimuovi; exit $LASTEXITCODE }
+    "avvia" { & $bun run avvia @resto; exit $LASTEXITCODE }
     "motore" { & $bun run schedule @resto; exit $LASTEXITCODE }
     "test" { & $bun test @resto; exit $LASTEXITCODE }
     { $_ -in @("dashboard", "tick", "once", "scan", "review", "status", "probe", "schedule", "build") } { & $bun run $cmd @resto; exit $LASTEXITCODE }

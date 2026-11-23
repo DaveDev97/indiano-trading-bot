@@ -8,6 +8,7 @@
     "scan": "bun run src/cli/scan.ts",
     "tick": "bun run src/cli/tick.ts",
     "schedule": "bun run src/cli/schedule.ts",
+    "avvia": "bun run src/cli/avvia.ts",
     "once": "bun run src/cli/once.ts",
     "review": "bun run src/cli/review.ts",
     "dashboard": "bun run src/cli/dashboard.ts",

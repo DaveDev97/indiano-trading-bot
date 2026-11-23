@@ -158,6 +158,9 @@ details summary{cursor:pointer;color:var(--color-ink-2)}pre{font:400 12.5px/1.5 
 .ritmo{display:grid;gap:16px;grid-template-columns:minmax(0,2fr) minmax(280px,1fr);margin:16px 0;align-items:stretch}@media (max-width:900px){.ritmo{grid-template-columns:minmax(0,1fr)}}
 .legenda-lista{list-style:none;margin:16px 0 0;padding:0}.legenda-lista li{display:grid;grid-template-columns:12px minmax(0,1fr) auto 48px;gap:8px 12px;align-items:center;padding:4px 0;font-size:14px}.legenda-lista .pallino{width:10px;height:10px;border-radius:3px}.legenda-lista .n{text-align:right;font-variant-numeric:tabular-nums}
 .classifica{list-style:none;margin:0 0 12px;padding:0}
+.passi{margin:0;padding-left:22px}.passi li{padding:6px 0;line-height:1.55}.passi li+li{border-top:1px solid oklch(100% 0 0 / 0.06)}
+details.card>summary{cursor:pointer}
+.legenda-linee{list-style:none;margin:12px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--color-ink-2)}.legenda-linee i{display:inline-block;width:18px;height:0;border-top:2px solid var(--c);margin-right:8px;vertical-align:middle}.legenda-linee i.tratto{border-top-style:dashed}
 .classifica li{display:grid;grid-template-columns:minmax(120px,200px) minmax(0,1fr) 64px 104px;gap:16px;align-items:center;padding:8px 0;border-top:1px solid oklch(100% 0 0 / 0.06)}
 .classifica li:first-child{border-top:0}.classifica .nome{color:var(--color-ink-2)}.classifica li.forte .nome{color:var(--color-ink)}
 .classifica .traccia{position:relative;height:4px;border-radius:2px;background:oklch(100% 0 0 / 0.06)}.classifica .riempi{position:absolute;top:0;bottom:0;border-radius:2px;background:var(--color-accent)}
@@ -179,7 +182,7 @@ var b=f.querySelector('button[type=submit],button:not([type])');if(b){setTimeout
 `;
 
 export function pagina(titolo: string, attiva: string, corpo: Safe, opts: { csrf?: string; stato?: Safe } = {}): string {
-  const voci: [string, string][] = [["/", "Panoramica"], ["/storico", "Storico"], ["/ombra", "Ombra"], ["/review", "Review"], ["/impostazioni", "Impostazioni"], ["/consumi", "Consumi AI"]];
+  const voci: [string, string][] = [["/", "Panoramica"], ["/selezione", "Selezione"], ["/storico", "Storico"], ["/ombra", "Ombra"], ["/review", "Review"], ["/impostazioni", "Impostazioni"], ["/consumi", "Consumi AI"]];
   const on = (u: string) => (u === "/" ? attiva === "/" : attiva.startsWith(u));
   return `<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escHtml(titolo)} · Indiano Trading</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/client.css"></head><body>

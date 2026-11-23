@@ -433,3 +433,17 @@ Limiti di questa sessione:
    - Più segnali, quindi più operazioni da misurare. Il rischio di peggiorare il risultato è dichiarato nella nota della v3 ed è da verificare in review.
    - Le modifiche fatte a mano restano visibili, con i risultati prima e dopo, così non si attribuisce alla strategia un effetto che dipende dal cambio. Lo studio di frequenza non entra nelle statistiche.
 4. **È sicuro?** Nessun segreto nei testi nuovi. La gabbia è invariata: il cambio tocca solo un parametro di strategia, entro il suo intervallo (1–4).
+
+## Pagina Selezione e comando `avvia` (23/11/2026)
+
+1. **È corretto?**
+   - **Selezione:** legge solo watchlist e segnali, quindi non può toccare ordini, gabbia o lock. Un titolo fuori selezione apre una pagina chiara, non un errore. Se mancano le candele il dettaglio dice "non disponibile" e non inventa niente.
+   - **`avvia`:** i casi limite sono la chiusura di un figlio (riavvio dopo 15 secondi, al massimo 5 in un'ora) e la morte del padre (i figli se ne accorgono e si chiudono). Un doppio avvio resta protetto: il lock delle sveglie vale anche tra due motori, e una seconda dashboard trova la porta occupata e si ferma dopo 5 tentativi.
+2. **Funziona?**
+   - **Test:** selezione con segnali calcolati sul momento, pagine aperte con la posizione dello scenario, nessun segreto nelle pagine.
+   - **Prova con i dati reali:** anteprima su un'altra porta senza lettore Telegram, vista nel browser su desktop e a 390 pixel.
+   - **Prova di `avvia` in modalità finta:** avvio, riavvio della dashboard uccisa, chiusura dei figli alla morte del padre.
+3. **Aiuta a guadagnare, o a capirlo?** Rende verificabile perché il bot può comprare un titolo, e perché oggi non lo compra. Non cambia nessuna decisione.
+4. **È sicuro?**
+   - **Selezione:** passa dall'autenticazione come le altre pagine. Il simbolo nell'indirizzo è ripulito dai caratteri non ammessi, e i testi passano dall'escape dei modelli HTML.
+   - **`avvia`:** l'output dei figli passa da `redact()`.

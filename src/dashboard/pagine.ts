@@ -1,6 +1,5 @@
 // Pagine: accesso, panoramica, dettaglio posizione, storico, operazioni ombra.
 import type { Ctx } from "../run/context.ts";
-import { NOME_SETTORE, type Settore } from "../config/settori.ts";
 import { NOME_SVEGLIA } from "../run/calendario.ts";
 import { livelloStop } from "../run/piani.ts";
 import { schedeOmbra, schedeReali, type Scheda } from "../journal/schede.ts";
@@ -14,6 +13,7 @@ import { conto, rendimentoDa, statoBot, storia } from "./dati.ts";
 import { estremi } from "./consumi.ts";
 import { nuovoCodice } from "./azioni.ts";
 import { errText } from "../util/redact.ts";
+import { classificaSettori as classificaSettoriHtml, nomeSettore } from "./pagine-selezione.ts";
 
 export function paginaLogin(errore?: string): string {
   return pagina("Accesso", "", html`<h1>Accesso</h1>
@@ -21,10 +21,6 @@ export function paginaLogin(errore?: string): string {
 <label>Password<br><input type="password" name="password" autocomplete="current-password" autofocus required></label><br><br>
 <button class="primary">Entra</button>${errore ? html`<p class="down">${errore}</p>` : ""}</form>
 <p class="muted small">La dashboard è raggiungibile solo da questo computer (127.0.0.1).</p>`);
-}
-
-function nomeSettore(s: string | null | undefined): string {
-  return s ? (NOME_SETTORE[s as Settore] ?? s) : "n/d";
 }
 
 function messaggio(m?: { ok: boolean; testo: string } | null): Safe {
@@ -85,15 +81,9 @@ export async function paginaPanoramica(ctx: Ctx, csrf: string, q: URLSearchParam
     // 4. settori: classifica con barre sottili (rendimento in più di SPY), diversa per tipo dal grafico principale
     const wl = st.watchlist;
     const periodo = wl?.forza.periodo ?? st.P.n("settori.periodoForza");
-    const spyP = wl?.forza.spy[periodo] ?? null;
     let classificaSettori: Safe = raw(`<p class="muted small">Watchlist assente: lancia la scansione.</p>`);
-    if (wl && spyP !== null) {
-      const righeS = wl.forza.settori.filter((x) => x.rendimenti[periodo] != null).map((x) => ({ s: x, ex: x.rendimenti[periodo]! - spyP })).sort((a, b) => b.ex - a.ex);
-      const m = Math.max(...righeS.map((r) => Math.abs(r.ex)), 1e-9);
-      classificaSettori = html`<ol class="classifica">${righeS.map((r) => html`<li${r.ex > 0 ? raw(' class="forte"') : ""}><span class="nome">${nomeSettore(r.s.settore)}<span class="muted"> ${r.s.etf}</span></span>
-<span class="traccia"><span class="riempi" style="${r.ex >= 0 ? `left:50%;width:${((r.ex / m) * 50).toFixed(1)}%` : `right:50%;width:${((-r.ex / m) * 50).toFixed(1)}%`}"></span></span>
-<span class="v ${cls(r.ex)}">${pct(r.ex, 1)}</span><span class="stato">${r.ex > 0 ? "si compra" : "non si compra"}</span></li>`)}</ol>
-<p class="small muted">${wl.forza.forti.length} settori su ${righeS.length} battono SPY (${pct(spyP, 1)} su ${periodo} sedute): solo lì si compra</p>`;
+    if (wl) {
+      classificaSettori = html`${classificaSettoriHtml(wl, periodo)}<p class="small"><a href="/selezione">Come sono stati scelti i titoli →</a></p>`;
     }
 
     const schede = schedeReali(ctx.paths);

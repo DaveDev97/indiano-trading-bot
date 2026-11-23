@@ -76,7 +76,7 @@ describe("dashboard: sicurezza (test 12, 47, 11)", () => {
     ctx.broker.faults.down = true;
     const s = await login();
     ctx.log.error("prova", { msg: "errore con PKSEGRETISSIMA99" });
-    for (const p of ["/", "/storico", "/ombra", "/review", "/impostazioni", "/consumi"]) {
+    for (const p of ["/", "/selezione", "/storico", "/ombra", "/review", "/impostazioni", "/consumi"]) {
       const t = await (await fetch(`${base}${p}`, { headers: { cookie: s.cookie } })).text();
       expect(t).not.toContain(PWD);
       expect(t).not.toContain("PKSEGRETISSIMA99");
@@ -91,7 +91,7 @@ describe("dashboard: sicurezza (test 12, 47, 11)", () => {
     await eseguiSveglia(sc.ctx, { slot: ap, forzata: false });
     const { d, base, login } = await avvia(sc.ctx);
     const s = await login();
-    for (const p of ["/", "/posizione/AAA", "/storico", "/ombra", "/review", "/impostazioni", "/consumi", `/log/${ap.id}`]) {
+    for (const p of ["/", "/posizione/AAA", "/selezione", "/selezione/AAA", "/storico", "/ombra", "/review", "/impostazioni", "/consumi", `/log/${ap.id}`]) {
       const r = await fetch(`${base}${p}`, { headers: { cookie: s.cookie } });
       expect(r.status).toBe(200);
       const t = await r.text();
@@ -276,5 +276,38 @@ describe("dashboard: grafici bklit e motion", () => {
     expect(t).toMatch(/<div class="isola" data-bklit="[a-z]+" data-props="[^"]+"><div class="riserva"><svg/);
     d.stop();
     rmRoot(sc.ctx.paths);
+  });
+});
+
+import { runScan } from "../src/scan/scan.ts";
+import { readJsonSafe } from "../src/util/atomic.ts";
+import type { Watchlist } from "../src/scan/scan.ts";
+describe("dashboard: selezione dei titoli", () => {
+  test("elenco con imbuto e settori; dettaglio con motivi, criteri, segnali e grafico (segnali calcolati sul momento)", async () => {
+    const ctx = makeCtx({ now: "2026-11-21T09:00:00Z" });
+    expect((await runScan(ctx)).ok).toBe(true);
+    const wl = readJsonSafe<Watchlist>(ctx.paths.watchlist);
+    if (!wl.ok) throw new Error("watchlist");
+    const { d, base, login } = await avvia(ctx);
+    const s = await login();
+    const el = await (await fetch(`${base}/selezione`, { headers: { cookie: s.cookie } })).text();
+    expect(el).toContain("Dall'universo agli acquistabili");
+    expect(el).toContain("battono SPY");
+    const primo = wl.value.acquistabili[0]!;
+    expect(el).toContain(`href="/selezione/${primo.simbolo}"`);
+    const r = await fetch(`${base}/selezione/${primo.simbolo}`, { headers: { cookie: s.cookie } });
+    expect(r.status).toBe(200);
+    const det = await r.text();
+    expect(det).toContain("Perché è stato scelto");
+    expect(det).toContain(primo.criteri[0]!.nome);
+    expect(det).toContain("Segnali tecnici");
+    expect(det).toContain("calcolati ora sulle candele chiuse");
+    expect(det).toContain('data-bklit="linee"');
+    expect(det).not.toContain("Errore interno");
+    // titolo fuori selezione: pagina chiara, non un errore
+    const fuori = await (await fetch(`${base}/selezione/ZZZZ`, { headers: { cookie: s.cookie } })).text();
+    expect(fuori).toContain("non è nella selezione");
+    d.stop();
+    rmRoot(ctx.paths);
   });
 });

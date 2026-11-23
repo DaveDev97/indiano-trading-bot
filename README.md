@@ -18,7 +18,7 @@ Il bot è fatto di due processi separati, che condividono solo la cartella `stat
 
 | Parte | Cos'è | Chi lo avvia |
 | --- | --- | --- |
-| **Motore** | Un processo **batch**: `bun run tick` controlla se c'è una sveglia da fare, la esegue ed esce. Il sabato fa la scansione dei titoli e, se è il momento, la review. | L'Utilità di pianificazione (Windows) o i timer di systemd (Linux), ogni 5 minuti. In alternativa `start motore` lo tiene acceso in primo piano. |
+| **Motore** | Un processo **batch**: `bun run tick` controlla se c'è una sveglia da fare, la esegue ed esce. Il sabato fa la scansione dei titoli e, se è il momento, la review. | L'Utilità di pianificazione (Windows) o i timer di systemd (Linux), ogni 5 minuti. In alternativa `start avvia` tiene accesi motore e dashboard in una sola finestra (o `start motore` il solo motore). |
 | **Dashboard** | Una **webapp** su `http://127.0.0.1:8787`. Mostra come sta andando e permette di governare il motore: parametri, pausa acquisti, freno d'emergenza, proposte della review, azioni manuali sulle posizioni. Legge anche i pulsanti di Telegram. | Si avvia all'accesso (Windows) o come servizio (Linux). Si può chiudere: il motore continua. |
 
 Il motore e la dashboard non si parlano direttamente. Ogni azione che manda ordini, da qualunque parte arrivi, passa dallo stesso esecutore sotto lo stesso lock: mai due ordini uguali, mai due processi sul broker insieme.
@@ -66,6 +66,7 @@ Su Windows i comandi sono `.\start.ps1 <comando>` da PowerShell, oppure `start.c
 | Comando | Cosa fa |
 | --- | --- |
 | `start installa` / `start disinstalla` | Registra o rimuove motore, scansione e dashboard: Utilità di pianificazione su Windows, timer di systemd dell'utente su Linux. |
+| `start avvia` | Motore e dashboard insieme, in una sola finestra, senza pianificazione. Ctrl+C o la chiusura della finestra li ferma entrambi. Se uno dei due si chiude da solo, lo riavvia dopo 15 secondi; dopo 5 chiusure in un'ora ferma tutto. |
 | `start motore` | Il motore in primo piano: un tick ogni 30 secondi, finché non chiudi. |
 | `start dashboard` | La webapp su `127.0.0.1:8787`. |
 | `start tick` | Una sola esecuzione del motore: la sveglia dovuta, o la scansione del sabato. |
@@ -95,6 +96,7 @@ Una sveglia partita con più di 20 minuti di ritardo è "saltata": si segnala e 
 - **Telegram**: un messaggio a fine sveglia, gli allarmi ⚠ a parte, la scansione del sabato, la review con i pulsanti Approva/Rifiuta.
 - **Dashboard** (tema Dusk, grafici bklit animati con motion, utilizzabile anche da telefono):
   - *Panoramica*: patrimonio contro SPY e riquadri delle posizioni;
+  - *Selezione*: l'analisi del mercato della scansione: settori contro SPY, i passi dall'universo agli acquistabili, l'elenco con lo stato tecnico di ogni titolo. Ogni titolo si apre con il perché è stato scelto (criterio per criterio, con valori, soglie e percentili), i segnali tecnici e i grafici di prezzo e volume;
   - *Storico* e *Ombra*: le operazioni ombra sono simulate e sempre separate;
   - *Review*: elenco cliccabile, con il dettaglio di cosa è stato provato e perché; proposte e versioni dei parametri;
   - *Impostazioni*, a schede, con una spiegazione per ogni scheda e la «i» accanto a ogni parametro;

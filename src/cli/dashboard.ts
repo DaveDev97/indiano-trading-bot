@@ -4,10 +4,12 @@ import { buildRuntime } from "../run/runtime.ts";
 import { avviaDashboard } from "../dashboard/server.ts";
 import { loadParams } from "../params/params.ts";
 import { parseArgs } from "../util/args.ts";
+import { chiudiSeOrfano } from "../util/process.ts";
 import { errText, redact, registerSecret } from "../util/redact.ts";
 import { dateInTz, TZ_ROME } from "../util/time.ts";
 
 const args = parseArgs();
+chiudiSeOrfano();
 try {
   const fake = args.flags.has("fake");
   const { ctx, secrets } = await buildRuntime({ fake, logFile: (p) => path.join(p.logs, `dashboard-${dateInTz(new Date(), TZ_ROME)}.log`), echo: false });

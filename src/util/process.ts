@@ -72,3 +72,21 @@ export const realProcessProbe: ProcessProbe = {
     return Math.abs(t - startMs) <= START_TOLERANCE_MS;
   },
 };
+
+/**
+ * Per i processi lanciati da `bun run avvia`: se il padre (INDIANO_PADRE = "pid:avvioMs") non è più vivo,
+ * il figlio si chiude da solo. Su Windows uccidere il padre non chiude i figli, che resterebbero orfani.
+ */
+export function chiudiSeOrfano(intervalloMs = 10_000, probe: ProcessProbe = realProcessProbe): void {
+  const v = process.env.INDIANO_PADRE;
+  if (!v) return;
+  const [pid, avvio] = v.split(":").map(Number);
+  if (!pid || !avvio) return;
+  const t = setInterval(async () => {
+    if (!(await probe.isAlive(pid, avvio))) {
+      console.error("processo principale (avvia) chiuso: mi fermo anch'io.");
+      process.exit(0);
+    }
+  }, intervalloMs);
+  t.unref?.();
+}
