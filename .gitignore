@@ -1,0 +1,12 @@
+# Segreti
+secrets.ts
+.env*
+
+# Dati di esecuzione
+state/
+logs/
+cache/
+
+# Bun / Node
+node_modules/
+*.log
