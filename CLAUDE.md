@@ -53,7 +53,7 @@ src/
   signals/     indicatori, regole di ingresso e uscita
   cage/        gabbia: limiti, pause, freno, dimensionamento
   run/         sveglia, lock, testimone, pianificazione, riconciliazione, esecutore ordini
-  brain/       chiamata a claude -p, schema, validazione, cervello finto
+  brain/       chiamata a claude -p, schema, validazione, cervello finto, registro consumi AI
   journal/     diario, schede delle operazioni, operazioni ombra, simulatore di uscite
   learning/    statistiche, proposte, review
   telegram/    invio, spezzatura, conversione HTML, pulsanti e callback
@@ -212,8 +212,10 @@ Lo script lo scrivi tu e lo lancia l'utente.
 
 ```text
 claude -p --output-format json --json-schema <schema-json> --tools "" --disallowedTools "mcp__*"
-       --strict-mcp-config --no-session-persistence --max-turns 3
+       --strict-mcp-config --no-session-persistence --max-turns 3 --max-budget-usd <tetto>
 ```
+
+`<tetto>` è il tetto per chiamata dai parametri (Contratto 8.7).
 
 - **Prima di usarlo**, esegui `claude --version` e `claude -p --help` e verifica che i flag esistano.
   Se uno manca, adatta il comando e scrivilo in `docs/decisioni.md`.
@@ -237,6 +239,23 @@ claude -p --output-format json --json-schema <schema-json> --tools "" --disallow
   - è in `structured_output`. Se manca (ad esempio il modello ha rifiutato) è un errore del cervello;
   - **valida comunque** la risposta nel codice, con un validatore scritto a mano.
 - **Timeout:** 180 secondi, poi termina il processo. Il codice di uscita diverso da 0 è un errore.
+- **Consumi** (per la scheda "Consumi AI"). Il JSON finale contiene:
+  - `total_cost_usd`;
+  - `usage` (`input_tokens`, `output_tokens`, `cache_creation_input_tokens`,
+    `cache_read_input_tokens`);
+  - `modelUsage`: una mappa modello → `inputTokens`, `outputTokens`, `cacheReadInputTokens`,
+    `cacheCreationInputTokens`, `costUSD`, `costBasis`;
+  - `duration_ms`, `duration_api_ms`, `num_turns`, `subtype` (`success`, `error_max_budget_usd`,
+    `error_during_execution`, …), `is_error`.
+
+  Fonte: <https://code.claude.com/docs/en/agent-sdk/cost-tracking.md>. Regole:
+  - **per costo e token usa `total_cost_usd` e `modelUsage`**, non `usage`. Con
+    `error_max_budget_usd`, `usage` non conta la risposta che ha superato il tetto;
+  - i costi sono **stime calcolate dal client**, non fatturazione: la dashboard lo dice;
+  - con `error_during_execution` i campi possono essere azzerati: registra "non misurato", non zero;
+  - con timeout il processo viene terminato e non c'è JSON: registra "non misurato";
+  - leggi i consumi **anche dalle risposte d'errore**;
+  - verifica i nomi dei campi con la chiamata di prova di `probe` e annotali in `docs/campi-dati.md`.
 
 ### Telegram
 

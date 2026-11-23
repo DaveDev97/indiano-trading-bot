@@ -394,7 +394,10 @@ borsa: weekend e festivi non contano come sveglie saltate.
    - `lezione` (facoltativa).
 
    **Niente quantità**: le calcola il codice. Se il cervello fallisce (timeout, risposta non valida,
-   errore): si eseguono comunque protezioni e uscite forti, **nessun acquisto**, allarme ⚠.
+   budget superato, errore) o è sospeso per il budget mensile (8.7): si eseguono comunque
+   protezioni e uscite forti, **nessun acquisto**, allarme ⚠.
+
+   Ogni chiamata, riuscita o no, registra i propri consumi (8.7).
 7. **Gabbia**: si compra solo tra i candidati di questa sveglia e si vende solo ciò che è in
    portafoglio. Ogni rifiuto va nel log e nel messaggio, con il motivo.
 8. **Esecuzione.**
@@ -704,6 +707,94 @@ direzione, e la review lo dice.
   - "Chiudi ora" su una posizione che non esiste più risponde "posizione già chiusa".
 - Ogni azione manuale va nel diario e su Telegram.
 
+### 8.7 Consumi AI
+
+Una scheda per sapere quanto lavora il "cervello" (`claude -p`), quanto costerebbe e per cosa.
+
+**Da dove vengono i dati.** Ogni chiamata al cervello, riuscita o no, scrive una riga in
+`state/ai-usage/AAAA-MM.jsonl`: file solo in aggiunta, scritto sotto il lock del diario. La riga
+contiene:
+- data e ora;
+- id della sveglia o della review;
+- **tipologia di task**;
+- modello;
+- esito: `ok`, `timeout`, `risposta non valida`, `budget superato`, `errore`;
+- durata totale e durata delle chiamate API;
+- numero di turni;
+- token: input, output, letti dalla cache, scritti in cache;
+- costo stimato in $;
+- dimensione del prompt inviato;
+- se era una sveglia forzata (`--force`).
+
+**Tipologie di task:**
+- decisione briefing;
+- decisione apertura;
+- decisione metà seduta;
+- decisione chiusura;
+- review periodica;
+- sonda/prova (`probe`).
+
+Quando ne serve una nuova, si aggiunge in `src/config/` e compare da sola nella scheda.
+
+**Onestà dei numeri** (va scritto nella scheda, non nascosto in una nota):
+- il costo è una **stima calcolata dal client** con un listino incorporato, non l'importo
+  fatturato;
+- con l'abbonamento Claude (token OAuth) non è un addebito a consumo ma il **costo equivalente se
+  si pagasse a consumo**;
+- i limiti di utilizzo dell'abbonamento non sono leggibili dal bot, quindi la scheda non li mostra;
+- se una chiamata viene interrotta per timeout non c'è un resoconto dei consumi: la riga riporta i
+  token come "**non misurato**" e la conta a parte. Non si stima e non si mette zero;
+- se Claude si blocca, alcuni risultati d'errore riportano zero: si mostrano come "non misurato".
+
+**Cosa mostra la scheda:**
+- **Riquadri** per oggi, settimana, mese e dall'inizio:
+  - numero di chiamate e quante fallite;
+  - token totali, divisi in input, output e cache;
+  - costo stimato;
+  - durata media;
+  - **quota di token letti dalla cache**, che indica quanto il prompt viene riutilizzato.
+- **Grafico nel tempo**:
+  - barre per giorno, settimana o mese, a scelta;
+  - impilate per tipologia di task;
+  - si può passare tra costo, token e numero di chiamate.
+- **Tabella dello spaccato**: righe = tipologie di task, colonne = periodo scelto (oggi, 7 giorni,
+  30 giorni, mese corrente, mese precedente, dall'inizio, oppure un intervallo di date). Per ogni
+  cella:
+  - chiamate;
+  - token;
+  - costo stimato;
+  - costo medio per chiamata;
+  - durata media;
+  - percentuale di errori.
+
+  La riga dei totali deve coincidere con la somma delle righe.
+- **Per modello**: stessa tabella raggruppata per modello, dal dettaglio per modello del
+  risultato.
+- **Rapporto con il trading**, solo come informazione:
+  - costo AI stimato per operazione chiusa;
+  - costo AI stimato del mese accanto al P&L del mese.
+- **Proiezione del mese**: costo medio per giorno di borsa × giorni di borsa rimanenti, etichettato
+  "stima".
+- **Ultime 50 chiamate**: data, tipologia, esito, token, costo, durata, collegamento al log della
+  sveglia.
+- Filtri per tipologia, esito e intervallo di date. Esportazione CSV del periodo selezionato.
+- Tutti i periodi si calcolano in **ora di Roma**: il giorno va da mezzanotte a mezzanotte.
+
+**Limiti di spesa** (parametri nelle impostazioni, gruppo "AI"):
+- **modello**: passato con `--model`, separatamente per le decisioni e per la review. Il valore
+  iniziale è "predefinito di Claude Code". È la leva principale sul costo: la scheda mostra il costo
+  medio per chiamata di ciascun modello usato, così il confronto si fa con i dati;
+- **tetto per chiamata**: passato a `claude -p` con `--max-budget-usd`. Valori iniziali: 1,00 $ per
+  una decisione, 3,00 $ per una review. Una chiamata che lo supera conta come errore del cervello
+  (6.6): nessun acquisto. Se **2 chiamate di fila** superano il tetto, arriva un allarme specifico
+  "tetto per chiamata troppo basso" con il costo osservato;
+- **budget mensile stimato**: valore iniziale 30 $. Avviso ⚠ su Telegram al 80% e al 100%, una volta
+  sola per soglia e per mese;
+- **al superamento del budget mensile**: `"solo avviso"` (iniziale) oppure `"sospendi il cervello"`.
+  - Con la sospensione le sveglie continuano: protezioni e uscite forti vengono eseguite, ma niente
+    acquisti, come quando il cervello fallisce.
+  - Il resoconto lo dice a ogni sveglia.
+
 ---
 
 ## 9. Telegram
@@ -725,7 +816,8 @@ convertiti; i messaggi oltre i 4096 caratteri si spezzano.
     risolto);
   - watchlist vecchia;
   - freno d'emergenza;
-  - profilo con meno di 5 titoli.
+  - profilo con meno di 5 titoli;
+  - budget AI mensile stimato all'80% o al 100%, cervello sospeso.
 - **Scansione del sabato**: settori forti, migliori 3 titoli per settore, conteggi per profilo,
   criteri non disponibili.
 - **Review**: sintesi e pulsanti Approva / Rifiuta.
@@ -855,6 +947,25 @@ Il bot deve poter rispondere a questa domanda con i numeri, senza addolcirli.
     La stessa proposta approvata da Telegram e dalla dashboard → un solo effetto.
 42. "Chiudi ora" a mercato chiuso → diventa "chiudi all'apertura". La protezione resta attiva e la
     vendita avviene alla sveglia di apertura.
+
+**Consumi AI**
+43. Ogni chiamata al cervello produce una riga di consumo, anche se fallisce:
+    - riuscita → token e costo letti dal risultato;
+    - timeout → "non misurato", mai zero;
+    - risultato d'errore con costi azzerati → "non misurato".
+44. Aggregazione:
+    - una chiamata alle 00:30 ora di Roma va nel giorno giusto, anche nei giorni di cambio dell'ora
+      legale;
+    - la somma delle tipologie coincide con il totale in ogni periodo;
+    - le chiamate "non misurate" sono contate ma non sommate nei token.
+45. Chiamata oltre il tetto (`error_max_budget_usd`) → trattata come errore del cervello, nessun
+    acquisto. Il costo registrato è `total_cost_usd`, che include la risposta che ha superato il
+    tetto.
+46. Budget mensile:
+    - all'80% → un solo avviso nel mese;
+    - in modalità "sospendi" → le sveglie successive non chiamano il cervello, eseguono le
+      protezioni e lo scrivono nel resoconto.
+47. Scheda consumi senza sessione → 401. Esportazione CSV → stessi numeri della tabella a video.
 
 ## 13. Fuori da questa versione (da elencare nei limiti)
 
