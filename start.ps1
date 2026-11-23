@@ -19,7 +19,8 @@ if (-not (Test-Path $bun)) {
 $env:PATH = (Join-Path $env:USERPROFILE ".local\bin") + ";" + (Split-Path $bun) + ";" + $env:PATH
 
 $cmd = if ($args.Count -gt 0) { [string]$args[0] } else { "aiuto" }
-$resto = if ($args.Count -gt 1) { $args[1..($args.Count - 1)] } else { @() }
+# sempre una lista: con un solo argomento PowerShell darebbe una stringa, e @resto la spezzerebbe in caratteri
+$resto = @($args | Select-Object -Skip 1)
 
 if (-not (Test-Path "secrets.ts") -and $cmd -notin @("aiuto", "help", "test") -and -not ($resto -contains "--fake")) {
     Copy-Item "secrets.example.ts" "secrets.ts"
