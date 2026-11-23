@@ -2,7 +2,7 @@
 import type { Ctx } from "../run/context.ts";
 import { GRUPPI, PARAM_DEFS, PARAM_BY_KEY, type Valore } from "../config/parametri.ts";
 import { AI_TASKS, ESITI_AI, nomeTask } from "../config/ai-task.ts";
-import { listVersions, loadParams } from "../params/params.ts";
+import { listVersions, loadParams, versioniManuali } from "../params/params.ts";
 import { leggiProposte, listaReview, type Proposta } from "../learning/archivio.ts";
 import { SPIEGAZIONE_GRUPPO, spiegazione } from "../config/spiegazioni.ts";
 import { schedeReali } from "../journal/schede.ts";
@@ -28,6 +28,7 @@ export function paginaReview(ctx: Ctx, csrf: string, flash?: { ok: boolean; test
 <p class="introduzione">La review guarda i risultati, prova a spostare di un passo ogni parametro della strategia sulle operazioni registrate e propone una modifica solo se il miglioramento è netto e stabile nel tempo. Con pochi dati non propone niente, ed è giusto così.</p>
 <h2>Proposte in attesa (${attesa.length})</h2>
 ${attesa.length ? html`<div class="lista">${attesa.map((p) => propostaRiga(p, csrf))}</div>` : html`<div class="note">Nessuna proposta in attesa.</div>`}
+${manualiHtml(ctx, reviews[0]?.creata)}
 <h2>Review passate</h2>
 ${reviews.length ? html`<div class="lista">${reviews.map((r) => {
     const st = (r.statistiche ?? {}) as any;
@@ -43,6 +44,23 @@ ${versioni.map((v) => html`<tr><td>v${v.versione}${`v${v.versione}` === P.versio
 <td class="small">${v.modifiche.length ? v.modifiche.map((m) => `${PARAM_BY_KEY.get(m.chiave)?.descrizione ?? m.chiave}: ${m.da} → ${m.a}`).join("; ") : "valori iniziali"}</td><td class="small">${risultatiVersione(ctx, `v${v.versione}`)}</td>
 <td>${`v${v.versione}` !== P.versione ? html`<form method="post" action="/azione/ripristina-versione" data-confirm="Ripristinare i valori della v${v.versione}? Verrà creata una nuova versione."><input type="hidden" name="csrf" value="${csrf}"><input type="hidden" name="versione" value="${v.versione}"><input type="hidden" name="attesa" value="${P.file.versione}"><button>Ripristina</button></form>` : ""}</td></tr>`)}</table></div>`;
   return pagina("Review", "/review", corpo, { csrf });
+}
+
+/** Modifiche fatte a mano: restano in evidenza finché una review successiva non le ha valutate. */
+function manualiHtml(ctx: Ctx, ultimaReview: string | undefined): Safe {
+  const tutte = versioniManuali(ctx.paths).reverse();
+  if (!tutte.length) return html``;
+  const tutteV = listVersions(ctx.paths);
+  return html`<h2>Modifiche fatte a mano (${tutte.length})</h2>
+<p class="introduzione">Le modifiche ai parametri decise da te, non dalla review. Ogni operazione ricorda la versione con cui è entrata, così la review successiva confronta i risultati prima e dopo. Con poche operazioni il confronto non dice ancora niente.</p>
+<div class="lista">${tutte.slice(0, 10).map((v) => {
+    const prec = [...tutteV].reverse().find((x) => x.versione < v.versione);
+    const daVerificare = !ultimaReview || v.data > ultimaReview;
+    return html`<div class="riga${daVerificare ? " aperta" : ""}"><span class="iniziale">v${v.versione}</span><span><span class="t">${v.modifiche.map((m) => `${PARAM_BY_KEY.get(m.chiave)?.descrizione ?? m.chiave}: ${m.da} → ${m.a}`).join("; ")}</span>
+<span class="d" style="display:block">${formatRome(v.data)}${v.nota ? ` · ${v.nota}` : ""}</span>
+<span class="d" style="display:block">Con v${v.versione}: ${risultatiVersione(ctx, `v${v.versione}`)}${prec ? ` · con v${prec.versione}: ${risultatiVersione(ctx, `v${prec.versione}`)}` : ""}</span></span>
+<span class="n"><span class="badge ${daVerificare ? "" : "b-good"}">${daVerificare ? "da verificare alla prossima review" : "valutata in review"}</span></span></div>`;
+  })}</div>`;
 }
 
 function risultatiVersione(ctx: Ctx, v: string): string {
@@ -150,7 +168,9 @@ export function paginaImpostazioni(ctx: Ctx, csrf: string, flash?: { ok: boolean
   const scheda = GRUPPI.find((g) => g.id === schedaRichiesta)?.id ?? GRUPPI[0]!.id;
   const ultimaModifica = (k: string) => {
     const v = [...versioni].reverse().find((x) => x.modifiche.some((m) => m.chiave === k));
-    return v ? `cambiato nella v${v.versione} ${v.autore.startsWith("review") ? `dalla ${v.autore}` : v.autore === "utente" ? "da te" : `(${v.autore})`}` : "mai cambiato";
+    if (!v) return "mai cambiato";
+    const m = v.modifiche.find((x) => x.chiave === k)!;
+    return `cambiato nella v${v.versione} ${v.autore.startsWith("review") ? `dalla ${v.autore}` : v.autore === "utente" ? "da te" : `(${v.autore})`} il ${formatRome(v.data)} (era ${String(m.da)})${v.nota ? `: ${v.nota}` : ""}`;
   };
   const pausa = readJsonOr<{ attiva: boolean }>(ctx.paths.pausaAcquisti, { attiva: false }).attiva;
   const freno = leggiFreno(ctx.paths, ctx.now()).stato;

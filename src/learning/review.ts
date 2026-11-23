@@ -1,7 +1,7 @@
 // Review periodica (§7.3) e conferma delle proposte (Telegram e dashboard, un solo effetto).
 import * as path from "node:path";
 import type { Ctx } from "../run/context.ts";
-import { loadParams, saveParams, type Params } from "../params/params.ts";
+import { loadParams, saveParams, versioniManuali, type Params } from "../params/params.ts";
 import { PARAM_BY_KEY } from "../config/parametri.ts";
 import { schedeOmbra, schedeReali, type Scheda } from "../journal/schede.ts";
 import { appendJournal } from "../journal/journal.ts";
@@ -110,6 +110,7 @@ export const SYSTEM_REVIEW = [
   "Scegli quali proposte presentare (anche nessuna) indicando i loro id in `proposteScelte`.",
   "Nel testo: cosa ha funzionato, cosa no, cosa proponi e perché, quanto è affidabile la conclusione.",
   "Con campione piccolo scrivilo chiaramente. Le operazioni ombra sono simulate: non mescolarle ai risultati reali.",
+  "Se `modificheManuali` non è vuoto, dedica un paragrafo a ogni modifica fatta a mano: cosa è cambiato, perché (nota), e cosa dicono i risultati per versione (`perVersione`) rispetto alla versione precedente, con la cautela dovuta al campione.",
 ].join("\n");
 
 export const SCHEMA_REVIEW = {
@@ -169,6 +170,12 @@ export async function runReview(ctx: Ctx, P: Params, motivo: string): Promise<Re
     statistiche: { reali: statisticheTot.reali, ombra: statisticheTot.ombra, perProfilo: statisticheTot.perProfilo, perUscita: statisticheTot.perUscita, modalita: statisticheTot.modalitaTutte, portafogloVsSpy: spy },
     proposteCandidate: candidate.map((c) => ({ id: c.id, parametro: c.descrizione, da: c.da, a: c.a, effettoR: c.effettoR, n: c.n, icPrimi: c.icPrimi, icUltimi: c.icUltimi })),
     nonValutati: ev.nonValutati.slice(0, 30),
+    // modifiche fatte a mano dall'ultima review: il cervello ne commenta l'effetto, versione per versione
+    modificheManuali: versioniManuali(ctx.paths, listaReview(ctx.paths).at(-1)?.creata).map((v) => ({
+      versione: `v${v.versione}`, data: v.data, nota: v.nota ?? null,
+      modifiche: v.modifiche.map((m) => ({ parametro: PARAM_BY_KEY.get(m.chiave)?.descrizione ?? m.chiave, da: m.da, a: m.a })),
+    })),
+    perVersione: statisticheTot.perVersione,
   };
   const cerv = await chiamaCervello(ctx, P, {
     task: "review", runId: id, forzata: false, systemPrompt: SYSTEM_REVIEW, istruzioni: "Scrivi la review periodica con i dati qui sotto.",
@@ -182,6 +189,7 @@ export async function runReview(ctx: Ctx, P: Params, motivo: string): Promise<Re
   } else {
     // senza cervello: testo scritto dal codice, nessuna proposta (le proposte le sceglie il modello)
     testo = testoDiRiserva(statisticheTot.reali, statisticheTot.ombra, piccolo, ev);
+    if (datiCervello.modificheManuali.length) testo += `\n\nModifiche fatte a mano dall'ultima review: ${datiCervello.modificheManuali.map((m) => `${m.versione} (${m.modifiche.map((x) => `${x.parametro} ${x.da} → ${x.a}`).join("; ")})`).join(", ")}. Confrontale con i risultati per versione.`;
     scelte = [];
     cervello = `non disponibile: ${cerv.motivo}`;
   }

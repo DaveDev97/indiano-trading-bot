@@ -207,3 +207,41 @@ describe("regole", () => {
     expect(controlloPrezzo(s, s.sma50! * 0.99, 50).motivi.join()).toContain("SMA50");
   });
 });
+
+describe("segnali della seduta e versione dei parametri", () => {
+  test("parametri cambiati a metà giornata: i segnali si ricalcolano con la nuova versione", async () => {
+    const { makeCtx } = await import("./ctx.ts");
+    const { rmRoot } = await import("./helpers.ts");
+    const { loadParams, saveParams } = await import("../src/params/params.ts");
+    const { segnaliDellaSeduta } = await import("../src/signals/sessione.ts");
+    const ctx = makeCtx({ now: "2026-11-23T15:00:00Z" });
+    const cal = await ctx.broker.getCalendar("2025-01-01", "2026-12-31");
+    const simboli = ctx.data.assets().slice(0, 5).map((a) => a.symbol);
+    const P1 = loadParams(ctx.paths).params;
+    const a = await segnaliDellaSeduta(ctx, P1, "2026-11-23", simboli, "r1", cal);
+    expect(a.calcolati).toBe(true);
+    expect(a.segnali.paramsVersione).toBe("v1");
+    // stessa versione: si riusano
+    expect((await segnaliDellaSeduta(ctx, P1, "2026-11-23", simboli, "r2", cal)).calcolati).toBe(false);
+    const s = saveParams(ctx.paths, { "segnali.confermeMin": 1 }, { autore: "utente", versioneAttesa: 1 });
+    expect(s.ok).toBe(true);
+    const P2 = loadParams(ctx.paths).params;
+    const b = await segnaliDellaSeduta(ctx, P2, "2026-11-23", simboli, "r3", cal);
+    expect(b.calcolati).toBe(true);
+    expect(b.segnali.paramsVersione).toBe("v2");
+    for (const sym of Object.keys(b.segnali.titoli)) {
+      const t = b.segnali.titoli[sym]!;
+      if (t.candeleSufficienti && t.obbligatorie.trend && t.obbligatorie.adx && t.obbligatorie.rs) expect(t.ingresso).toBe(t.nConferme >= 1);
+    }
+    rmRoot(ctx.paths);
+  });
+  test("motivo ADX: dice quale condizione manca", () => {
+    const bars: Bar[] = Array.from({ length: 320 }, (_, i) => ({ t: addDays("2025-06-01", i), o: 200 - i * 0.3, h: 201 - i * 0.3, l: 199 - i * 0.3, c: 200 - i * 0.3 - 0.2, v: 1000 }));
+    const p = { candeleMin: 300, smaBreve: 20, smaMedia: 50, smaLunga: 200, atrPeriodo: 14, adxPeriodo: 14, adxMin: 20, confermeMin: 2, volumeMult: 1.5, donchianPeriodo: 20, volumeMediaPeriodo: 20, rsMediaPeriodo: 50, resistenzaFinestra: 120, resistenzaBarre: 5, resistenzaTolleranza: 1.5, rotturaMin: 0.5, candelaCorpoAtr: 1.5, candelaQuarto: 0.75, quasiAdx: 3 } as ParametriSegnali;
+    const sg = calcolaSegnali("GIU", bars, bars, p);
+    const m = sg.motivi.find((x) => x.startsWith("ADX"))!;
+    expect(sg.adx!).toBeGreaterThan(20); // discesa regolare: ADX alto ma −DI sopra +DI
+    expect(m).toContain("forte, ma +DI");
+    expect(m).not.toContain("sotto 20");
+  });
+});

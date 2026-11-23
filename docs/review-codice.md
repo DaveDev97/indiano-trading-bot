@@ -420,3 +420,16 @@ Limiti di questa sessione:
 **Limiti:**
 - Il bundle pesa 503 KB.
 - Bun compila due file di bklit nella modalità JSX "classica": funzionano, ma è un'avvertenza da rivedere a ogni aggiornamento di bklit.
+
+## Conferme a 1, segnali per versione, traccia delle modifiche manuali (23/11/2026)
+
+1. **È corretto?**
+   - Il cambio dei parametri passa da `saveParams`: versione nuova, controllo del conflitto, diario. Nessuna scrittura diretta su `params.json`.
+   - Caso limite: parametri cambiati dopo il calcolo dei segnali del giorno. Prima la sveglia avrebbe applicato le soglie vecchie; ora si ricalcolano sulle stesse candele chiuse. Senza dati nuovi non c'è look-ahead.
+2. **Funziona?**
+   - Test nuovi: ricalcolo dei segnali al cambio di versione, e motivo ADX che dice quale condizione manca.
+   - Eseguito sul conto paper reale: la sveglia forzata `2026-11-23-1559` ha ricalcolato i segnali con v3. Esito: 0 candidati, perché nessun titolo aveva rotture sulla candela del 20/11.
+3. **Aiuta a guadagnare, o a capirlo?**
+   - Più segnali, quindi più operazioni da misurare. Il rischio di peggiorare il risultato è dichiarato nella nota della v3 ed è da verificare in review.
+   - Le modifiche fatte a mano restano visibili, con i risultati prima e dopo, così non si attribuisce alla strategia un effetto che dipende dal cambio. Lo studio di frequenza non entra nelle statistiche.
+4. **È sicuro?** Nessun segreto nei testi nuovi. La gabbia è invariata: il cambio tocca solo un parametro di strategia, entro il suo intervallo (1–4).

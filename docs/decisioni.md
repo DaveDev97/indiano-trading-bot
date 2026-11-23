@@ -163,3 +163,16 @@ Formato: data — dubbio — scelta — motivo. Si sceglie sempre l'opzione più
     - Sonnet 5.5 (`claude-sonnet-5-5`) per briefing e chiusura, che scrivono solo piano e resoconto.
     - Nuovo parametro `ai.modelloSemplici`. Sul conto reale applicato come versione v2 dei parametri, autore "utente".
     - Con "predefinito" la dashboard mostra il modello usato davvero nell'ultima chiamata. Se la chiamata ne usa più di uno, mostra quello con il costo maggiore: Claude Code usa anche un modello piccolo per compiti interni.
+
+36. **Conferme minime da 2 a 1** (23/11/2026, richiesta dell'utente).
+    - Alla prima apertura sul conto paper nessuno dei 21 acquistabili superava le regole d'ingresso.
+    - Studio di frequenza sulle ultime 250 sedute, con i 21 acquistabili del giorno: con 2 conferme c'era almeno un segnale nel 31% delle sedute (circa 2 a settimana); con 1 nel 69% (circa 7 a settimana).
+    - Il rendimento a 20 sedute non peggiora, ma il confronto ha due limiti: usa la selezione di oggi applicata al passato, che gonfia i risultati, e ha finestre sovrapposte. Non è una prova.
+    - Applicata come versione v3 dei parametri, autore "utente", con il motivo nella nota.
+    - La pagina Review elenca le modifiche fatte a mano, con i risultati della versione nuova e di quella precedente, finché una review non le ha valutate.
+    - La review del sabato riceve `modificheManuali` e `perVersione` e deve commentarle.
+
+37. **Segnali ricalcolati se cambiano i parametri a metà giornata.**
+    - Prima: i segnali della seduta erano calcolati una sola volta e riusati anche dopo un cambio di soglie, quindi la sveglia applicava soglie non più attive.
+    - Ora: se la versione salvata nei segnali è diversa da quella attiva, si ricalcolano tutti sulle stesse candele chiuse.
+    - Più prudente così: le regole applicate sono sempre quelle attive. Le candele non cambiano, quindi non entra nessun dato nuovo.

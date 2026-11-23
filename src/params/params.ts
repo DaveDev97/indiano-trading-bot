@@ -75,6 +75,11 @@ export function listVersions(paths: Paths): ParamsFile[] {
   return out.sort((a, b) => a.versione - b.versione);
 }
 
+/** Versioni create a mano dall'utente (non dalla review), dalla più vecchia; `dopo` = data ISO esclusa. */
+export function versioniManuali(paths: Paths, dopo?: string): ParamsFile[] {
+  return listVersions(paths).filter((v) => v.autore === "utente" && v.modifiche.length > 0 && (!dopo || v.data > dopo));
+}
+
 export interface LoadResult {
   params: Params;
   allarme?: string;

@@ -44,7 +44,11 @@ export function leggiCandele(ctx: Ctx, seduta: string): CandeleSeduta {
 
 /** Restituisce i segnali della seduta: letti se già calcolati, altrimenti calcolati ora e salvati. */
 export async function segnaliDellaSeduta(ctx: Ctx, P: Params, seduta: string, simboli: string[], runId: string, cal: CalendarDay[]): Promise<{ segnali: SegnaliSeduta; calcolati: boolean }> {
-  const gia = leggiSegnali(ctx, seduta);
+  // segnali calcolati con un'altra versione dei parametri (es. soglie cambiate a metà giornata): si ricalcolano tutti,
+  // sulle stesse candele chiuse, altrimenti la sveglia userebbe soglie che non sono più quelle attive
+  const letti = leggiSegnali(ctx, seduta);
+  const gia = letti && letti.paramsVersione === P.versione ? letti : null;
+  if (letti && !gia) ctx.log.info("segnali ricalcolati: parametri cambiati", { da: letti.paramsVersione, a: P.versione });
   const mancanti = gia ? simboli.filter((s) => !gia.titoli[s] && !gia.mancanti.includes(s)) : simboli;
   if (gia && mancanti.length === 0) return { segnali: gia, calcolati: false };
   // prima sveglia della seduta, oppure titoli nuovi (es. una posizione aperta a mano): si calcolano solo quelli

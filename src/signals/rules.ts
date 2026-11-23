@@ -128,7 +128,11 @@ export function calcolaSegnali(simbolo: string, bars: Bar[], spy: Bar[], p: Para
   const adxOk = v.adx !== null && v.pdi !== null && v.mdi !== null && v.adx >= p.adxMin && v.pdi > v.mdi;
   const rsOk = v.rs !== null && v.rsMedia !== null && v.rs > v.rsMedia;
   if (!trend) motivi.push("trend non crescente (chiusura > SMA50 > SMA200 non verificato)");
-  if (!adxOk) motivi.push(v.adx === null ? "ADX non calcolabile" : `ADX ${v.adx.toFixed(1)} sotto ${p.adxMin} o +DI ≤ −DI`);
+  if (!adxOk) {
+    if (v.adx === null || v.pdi === null || v.mdi === null) motivi.push("ADX non calcolabile");
+    else if (v.adx < p.adxMin) motivi.push(`ADX ${v.adx.toFixed(1)} sotto ${p.adxMin}${v.pdi <= v.mdi ? " e +DI ≤ −DI (spinta ribassista)" : ""}`);
+    else motivi.push(`ADX ${v.adx.toFixed(1)} forte, ma +DI ${v.pdi.toFixed(1)} ≤ −DI ${v.mdi.toFixed(1)} (spinta ribassista)`);
+  }
   if (!rsOk) motivi.push("forza relativa sotto la sua media");
 
   const rapportoVolume = vAvg && vAvg > 0 ? b.v / vAvg : null;
