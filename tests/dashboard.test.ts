@@ -46,6 +46,18 @@ describe("dashboard: sicurezza (test 12, 47, 11)", () => {
     d.stop();
     rmRoot(ctx.paths);
   });
+  test("accesso da un browser vero: Origin null (same-origin) ammesso, origini estranee rifiutate", async () => {
+    const { d, base, ctx } = await avvia();
+    const post = (h: Record<string, string>) => fetch(`${base}/accedi`, { method: "POST", redirect: "manual", body: new URLSearchParams({ password: PWD }), headers: { "content-type": "application/x-www-form-urlencoded", ...h } }).then((r) => r.status);
+    expect(await post({ origin: "null", "sec-fetch-site": "same-origin" })).toBe(303);
+    expect(await post({ origin: base, "sec-fetch-site": "same-origin" })).toBe(303);
+    expect(await post({ origin: "null", "sec-fetch-site": "cross-site" })).toBe(403);
+    expect(await post({ origin: "http://evil.example", "sec-fetch-site": "cross-site" })).toBe(403);
+    const pagina = await fetch(`${base}/`);
+    expect(pagina.headers.get("referrer-policy")).toBe("same-origin");
+    d.stop();
+    rmRoot(ctx.paths);
+  });
   test("password sbagliata → 401; il cookie è HttpOnly e SameSite=Strict", async () => {
     const { d, base, ctx } = await avvia();
     const r = await fetch(`${base}/accedi`, { method: "POST", body: new URLSearchParams({ password: "no" }), headers: { "content-type": "application/x-www-form-urlencoded" } });

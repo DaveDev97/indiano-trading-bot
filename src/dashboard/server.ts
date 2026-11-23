@@ -65,7 +65,8 @@ export function avviaDashboard(ctx: Ctx, o: OpzioniServer) {
         "cache-control": "no-store",
         "x-frame-options": "DENY",
         "x-content-type-options": "nosniff",
-        "referrer-policy": "no-referrer",
+        // same-origin: con no-referrer i browser inviano "Origin: null" sui moduli e l'accesso veniva rifiutato
+        "referrer-policy": "same-origin",
         "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
         ...extra,
       },
@@ -82,7 +83,10 @@ export function avviaDashboard(ctx: Ctx, o: OpzioniServer) {
 
     if (req.method === "POST") {
       const origin = req.headers.get("origin");
-      if (origin && !hostOk.has(origin.replace(/^https?:\/\//, ""))) return new Response("Origine non ammessa", { status: 403 });
+      // "null" arriva da alcuni browser sui moduli: si accetta solo se il browser stesso dichiara la richiesta same-origin
+      const stessoSito = req.headers.get("sec-fetch-site") === "same-origin";
+      const origineOk = !origin || hostOk.has(origin.replace(/^https?:\/\//, "")) || (origin === "null" && stessoSito);
+      if (!origineOk) return new Response("Origine non ammessa", { status: 403 });
     }
 
     if (url.pathname === "/accedi" && req.method === "POST") {
