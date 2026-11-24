@@ -27,17 +27,32 @@ Il "cervello" è Claude Code in modalità non interattiva (`claude -p`). Riceve 
 
 ## Requisiti
 
+Da installare ci sono solo due programmi.
+
 - **Bun** 1.4 o successivo:
   - Windows: `powershell -c "irm bun.sh/install.ps1 | iex"`
   - Linux: `curl -fsSL https://bun.sh/install | bash`
-- **Claude Code** (il comando `claude` deve essere nel PATH):
+- **Claude Code** (il comando `claude` deve essere raggiungibile dal terminale):
   - Windows: `irm https://claude.ai/install.ps1 | iex`
   - Linux: `curl -fsSL https://claude.ai/install.sh | bash`
 
-  Poi lancia `claude setup-token` per ottenere il token.
-- Un conto **paper** Alpaca, un bot Telegram (da BotFather) e una chiave Finnhub gratuita.
+  Dopo l'installazione apri un terminale nuovo, lancia `claude` una volta e accedi con il tuo account Claude: è lui che paga le chiamate del "cervello". Il token di `claude setup-token` è facoltativo. La configurazione guidata lo chiede, e lo consiglia se il bot parte dall'Utilità di pianificazione o dai timer di Linux.
 
-Il motore non ha dipendenze npm. La dashboard usa i grafici di [bklit](https://bklit.com) e [motion](https://motion.dev), già compilati in `src/dashboard/assets/`: per usare il bot non serve `bun install`.
+Servono poi tre account gratuiti. Non devi crearli prima: la configurazione guidata del primo avvio ti spiega passo per passo come farlo, e verifica ogni chiave.
+
+- un conto **paper** su Alpaca;
+- una chiave **Finnhub**;
+- un bot **Telegram**, creato con @BotFather. È facoltativo: senza, non ricevi messaggi.
+
+Inoltre:
+
+- **Sistema:** Windows 10/11, oppure Linux a 64 bit (vedi sotto per il Raspberry Pi).
+- **Browser e rete:** un browser, per la dashboard e la configurazione, e una connessione a internet.
+- **PC acceso:** negli orari di borsa (15:30–22:00 ora di Roma), oppure in sospensione con la pianificazione installata (`start installa`), che lo riattiva.
+
+**Non servono:** Node.js, `npm` o `bun install`, un database, Docker. Nemmeno git, se scarichi il pacchetto. Il motore non ha dipendenze npm. La dashboard usa i grafici di [bklit](https://bklit.com) e [motion](https://motion.dev), già compilati in `src/dashboard/assets/`.
+
+**Windows:** se PowerShell blocca `start.ps1` per i criteri di esecuzione, usa `start.cmd avvia` (da cmd o con doppio clic), che li aggira già.
 
 **Raspberry Pi 4B:** serve un sistema a **64 bit** (Raspberry Pi OS 64-bit o Ubuntu arm64), perché Bun non gira a 32 bit. Il Pi deve restare acceso, e i timer usano sempre l'ora di Roma qualunque sia il fuso del sistema.
 
