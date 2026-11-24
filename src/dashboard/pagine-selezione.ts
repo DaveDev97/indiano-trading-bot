@@ -22,7 +22,7 @@ import { errText } from "../util/redact.ts";
 import { cls, html, isola, num, pagina, pct, raw, usd, type Safe } from "./html.ts";
 import { graficoLinee, striscia } from "./svg.ts";
 import { cached } from "./dati.ts";
-import type { StatoScansione } from "./scansione-manuale.ts";
+import { testoAvanzamento, type StatoScansione } from "./scansione-manuale.ts";
 
 type VoceGrigia = Watchlist["zonaGrigia"][number];
 type Gruppo = "acquistabile" | "zona grigia" | "settore debole";
@@ -175,13 +175,19 @@ function cono(stadi: { nome: string; valore: number; descrizione: string }[]): S
   })}</div>`;
 }
 
+/**
+ * Scheda della scansione in corso. Si aggiorna da sola: app.js legge /stato/scansione ogni secondo
+ * (data-scansione) e a fine scansione ricarica la pagina con la lista nuova.
+ */
+export function cardScansioneInCorso(sc: StatoScansione, link = false): Safe {
+  const q = sc.fatti !== null && sc.totale ? sc.fatti / sc.totale : null;
+  return html`<div class="card scansione" data-scansione><div><h3>Scansione in corso</h3>
+<p class="small muted">Avviata ${sc.avviata ? formatRome(sc.avviata) : "ora"} · <span data-sc-testo>${testoAvanzamento(sc)}</span>. <span data-sc-nota>Si aggiorna da sola ogni secondo; a fine scansione la pagina si ricarica con la lista nuova.</span>${link ? html` <a href="/selezione">Vai a Selezione →</a>` : ""}</p>
+<div class="avanzamento"${q === null ? raw(" hidden") : ""}><span data-sc-barra style="width:${((q ?? 0) * 100).toFixed(1)}%"></span></div></div></div>`;
+}
+
 function cardScansione(csrf: string, sc: StatoScansione, P: Params): Safe {
-  if (sc.inCorso) {
-    const q = sc.fatti !== null && sc.totale ? sc.fatti / sc.totale : null;
-    return html`<div class="card scansione"><div><h3>Scansione in corso</h3>
-<p class="small muted">Avviata ${sc.avviata ? formatRome(sc.avviata) : "ora"} · ${sc.fase ?? "avvio"}${q !== null ? ` · ${num(sc.fatti, 0)} di ${num(sc.totale, 0)}` : ""}. <a href="/selezione">Aggiorna</a></p>
-${q !== null ? html`<div class="avanzamento"><span style="width:${(q * 100).toFixed(1)}%"></span></div>` : ""}</div></div>`;
-  }
+  if (sc.inCorso) return cardScansioneInCorso(sc);
   return html`<div class="card scansione"><div><h3>Scansione manuale</h3>
 <p class="small muted">Universo: ${descrizioneUniverso(P)} (<a href="/impostazioni?scheda=universo">cambia</a>). Riparte dalla cache: con i dati già scaricati bastano pochi minuti, altrimenti circa un'ora.</p></div>
 <form class="inline" method="post" action="/azione/scansione" data-confirm="Lanciare una scansione adesso? Sostituisce la lista degli acquistabili (gli override restano). Le richieste a Finnhub arrivano vicino al limite: se nel frattempo parte una sveglia, potrebbe non riuscire a verificare le trimestrali e quindi non comprare."><input type="hidden" name="csrf" value="${csrf}"><button class="primary">Lancia la scansione</button></form></div>`;
@@ -191,7 +197,7 @@ export function paginaSelezione(ctx: Ctx, csrf: string, flash?: Flash, scansione
   const P = loadParams(ctx.paths, ctx.now()).params;
   const sc = scansione ?? { inCorso: false, avviata: null, fase: null, fatti: null, totale: null };
   const wl = leggiWatchlist(ctx);
-  if (!wl) return pagina("Selezione", "/selezione", html`<h1>Selezione dei titoli</h1>${flashHtml(flash)}${cardScansione(csrf, sc, P)}<div class="note">Nessuna scansione ancora: la prima parte il sabato alle ${P.s("orari.scansione")}, oppure lanciala qui sopra.</div>`, { csrf });
+  if (!wl) return pagina("Selezione", "/selezione", html`<h1>Selezione dei titoli</h1>${flashHtml(flash)}${cardScansione(csrf, sc, P)}<div class="note">${sc.inCorso ? "È la prima scansione: con la cache vuota dura circa un'ora (Finnhub permette meno di 60 richieste al minuto). Gli acquisti partono alla prima sveglia di apertura dopo la fine." : html`Nessuna scansione ancora. Di solito la prima parte da sola all'avvio della dashboard; poi ogni sabato alle ${P.s("orari.scansione")}. Puoi lanciarla qui sopra.`}</div>`, { csrf });
   const ov = leggiOverride(ctx.paths);
   const st = applicaOverride(wl, ov);
   const sed = ultimaSeduta(ctx);

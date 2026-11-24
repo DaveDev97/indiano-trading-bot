@@ -4,7 +4,9 @@
 import { FINNHUB_URL, PAPER_TRADING_URL, TELEGRAM_URL } from "../config/costanti.ts";
 import { redact, registerSecret } from "../util/redact.ts";
 import { errText } from "../util/redact.ts";
-import { findClaude } from "../brain/claude.ts";
+import * as fs from "node:fs";
+import { findClaude, problemaDiAccesso } from "../brain/claude.ts";
+import { brainCwd } from "../config/costanti.ts";
 
 export type Fetch = (url: string, init?: RequestInit) => Promise<Response>;
 export type Esito<T = Record<string, unknown>> = { ok: true; info: T } | { ok: false; errore: string };
@@ -106,12 +108,22 @@ export async function messaggioProva(botToken: string, chatId: string, f: Fetch 
   }
 }
 
-export type EseguiComando = (cmd: string[]) => Promise<{ codice: number; uscita: string }>;
+export interface OpzioniComando {
+  /** Variabili da aggiungere all'ambiente del processo (es. il token di Claude). */
+  env?: Record<string, string>;
+  cwd?: string;
+  timeoutMs?: number;
+}
+export type EseguiComando = (cmd: string[], o?: OpzioniComando) => Promise<{ codice: number; uscita: string }>;
 
-const eseguiVero: EseguiComando = async (cmd) => {
+const eseguiVero: EseguiComando = async (cmd, o = {}) => {
   try {
-    const p = Bun.spawn(cmd, { stdout: "pipe", stderr: "pipe", stdin: "ignore" });
-    const t = setTimeout(() => p.kill(), 15_000);
+    const env: Record<string, string> = {};
+    for (const [k, v] of Object.entries(process.env)) if (typeof v === "string") env[k] = v;
+    Object.assign(env, o.env ?? {});
+    if (o.cwd) fs.mkdirSync(o.cwd, { recursive: true });
+    const p = Bun.spawn(cmd, { stdout: "pipe", stderr: "pipe", stdin: "ignore", env, cwd: o.cwd });
+    const t = setTimeout(() => p.kill(), o.timeoutMs ?? 15_000);
     const [out, , codice] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text(), p.exited]);
     clearTimeout(t);
     return { codice, uscita: out.trim() };
@@ -120,11 +132,52 @@ const eseguiVero: EseguiComando = async (cmd) => {
   }
 };
 
-/** Claude Code installato? Serve al "cervello"; senza, il bot non compra (protezioni e uscite continuano). */
-export async function verificaClaude(esegui: EseguiComando = eseguiVero, trova: () => string | null = findClaude): Promise<Esito<{ versione: string }>> {
-  const bin = trova();
+const COME_ACCEDERE = "Apri un terminale nuovo e scrivi «claude auth login» (oppure «claude» e poi /login), accedi con il tuo account Claude e premi «Controlla Claude Code». In alternativa genera un token con «claude setup-token» e incollalo qui sotto.";
+
+/** Legge un JSON dall'uscita di un comando (anche se prima ci sono altre righe). */
+function jsonDa(uscita: string): any {
+  for (const t of [uscita, uscita.slice(uscita.indexOf("{"))]) {
+    try {
+      return JSON.parse(t);
+    } catch {}
+  }
+  return null;
+}
+
+/**
+ * Claude Code installato e con l'accesso fatto? Serve al "cervello"; senza, il bot non compra (protezioni e uscite continuano).
+ * 1. `claude --version`; 2. `claude auth status` (gratis: scopre subito «accesso non fatto»);
+ * 3. una domanda di prova con `claude -p`: è l'unico modo di sapere se un token incollato vale davvero
+ *    (con un token qualsiasi `auth status` risponde «loggedIn: true»).
+ */
+export async function verificaClaude(opz: { token?: string; esegui?: EseguiComando; trova?: () => string | null; prova?: boolean } = {}): Promise<Esito<{ versione: string }>> {
+  const esegui = opz.esegui ?? eseguiVero;
+  const bin = (opz.trova ?? findClaude)();
+  const token = (opz.token ?? "").trim();
+  if (token) registerSecret(token);
   if (!bin) return { ok: false, errore: "Claude Code non è installato o non è nel PATH." };
   const r = await esegui([bin, "--version"]);
   if (r.codice !== 0 || !r.uscita) return { ok: false, errore: "Claude Code non è installato o non è nel PATH." };
-  return { ok: true, info: { versione: r.uscita.split(/\r?\n/)[0]!.slice(0, 80) } };
+  const versione = r.uscita.split(/\r?\n/)[0]!.slice(0, 80);
+  const env = token ? { CLAUDE_CODE_OAUTH_TOKEN: token } : undefined;
+
+  const stato = jsonDa((await esegui([bin, "auth", "status", "--json"], { env })).uscita);
+  if (stato && stato.loggedIn === false) return { ok: false, errore: `Claude Code è installato (${versione}) ma non hai fatto l'accesso al tuo account. ${COME_ACCEDERE}` };
+  if (opz.prova === false) return { ok: true, info: { versione } };
+
+  // domanda di prova, con le stesse precauzioni del cervello: niente strumenti, cartella vuota fuori dal progetto
+  const help = (await esegui([bin, "-p", "--help"])).uscita;
+  const c = [bin, "-p", "Rispondi soltanto con la parola: ok", "--output-format", "json"];
+  for (const [flag, ...valori] of [["--tools", ""], ["--strict-mcp-config"], ["--no-session-persistence"], ["--max-turns", "1"], ["--setting-sources", "project"]] as string[][]) {
+    if (help.includes(flag!)) c.push(flag!, ...valori);
+  }
+  const p = await esegui(c, { env, cwd: brainCwd(), timeoutMs: 120_000 });
+  const j = jsonDa(p.uscita);
+  if (!j) return { ok: false, errore: p.codice === 0 ? "Claude Code ha risposto in un formato inatteso: riprova." : `Claude Code non risponde (codice ${p.codice}). Riprova tra poco.` };
+  if (p.codice !== 0 || j.is_error === true || (j.subtype && j.subtype !== "success")) {
+    const testo = String(j.result ?? j.subtype ?? "errore");
+    if (problemaDiAccesso(testo)) return { ok: false, errore: `Claude Code non accetta l'accesso${token ? " con il token incollato" : ""}: «${redact(testo).slice(0, 160)}». ${COME_ACCEDERE}` };
+    return { ok: false, errore: `La domanda di prova a Claude non è riuscita: «${redact(testo).slice(0, 200)}». Riprova tra poco.` };
+  }
+  return { ok: true, info: { versione } };
 }

@@ -4,7 +4,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { campiMancanti, mancantiPerMotore, scriviSegreti, testoSegreti, valoriDa, type Valori } from "../src/setup/segreti-file.ts";
-import { messaggioProva, trovaChat, verificaAlpaca, verificaClaude, verificaFinnhub, verificaTelegram, type Fetch } from "../src/setup/verifiche.ts";
+import { messaggioProva, trovaChat, verificaAlpaca, verificaClaude, verificaFinnhub, verificaTelegram, type EseguiComando, type Fetch } from "../src/setup/verifiche.ts";
+import { interpretaUscita } from "../src/brain/claude.ts";
 import { avviaConfigurazione } from "../src/setup/server-configurazione.ts";
 import { redact } from "../src/util/redact.ts";
 
@@ -37,7 +38,20 @@ function finto(opt: { alpaca?: number; finnhub?: number; aggiornamenti?: unknown
   };
   return { f, chiamate };
 }
-const msg = (id: number, nome: string, type = "private") => ({ message: { chat: { id, type, first_name: nome } } });
+/** `claude` finto: risponde a --version, auth status, -p --help e alla domanda di prova. Mai il comando vero. */
+function claudeFinto(opt: { loggedIn?: boolean; risposta?: unknown } = {}) {
+  const chiamate: { cmd: string[]; env?: Record<string, string>; cwd?: string }[] = [];
+  const esegui: EseguiComando = async (cmd, o = {}) => {
+    chiamate.push({ cmd, env: o.env, cwd: o.cwd });
+    if (cmd[1] === "--version") return { codice: 0, uscita: "2.1.330 (Claude Code)\naltro" };
+    if (cmd[1] === "auth") return { codice: opt.loggedIn === false ? 1 : 0, uscita: JSON.stringify({ loggedIn: opt.loggedIn ?? true, authMethod: "claude.ai" }) };
+    if (cmd[2] === "--help") return { codice: 0, uscita: "--tools <tools>  --no-session-persistence  --max-turns" };
+    const r = (opt.risposta ?? { type: "result", subtype: "success", is_error: false, result: "ok" }) as { is_error?: boolean };
+    return { codice: r.is_error ? 1 : 0, uscita: JSON.stringify(r) };
+  };
+  return { esegui, chiamate };
+}
+const msg = (id: number, nome: string, type = "private") =>({ message: { chat: { id, type, first_name: nome } } });
 
 describe("file dei segreti", () => {
   test("campi mancanti: nomi leggibili, Telegram e Claude facoltativi, password di almeno 12 caratteri", () => {
@@ -106,10 +120,37 @@ describe("verifiche delle chiavi", () => {
     expect((await messaggioProva(TOKEN, "abc", finto().f)).ok).toBe(false);
     expect((await messaggioProva(TOKEN, "-1001234", finto().f)).ok).toBe(true);
   });
-  test("Claude Code: assente o presente", async () => {
-    expect((await verificaClaude(async () => ({ codice: 0, uscita: "x" }), () => null)).ok).toBe(false);
-    const ok = await verificaClaude(async () => ({ codice: 0, uscita: "2.1.330 (Claude Code)\naltro" }), () => "claude");
+  test("Claude Code: assente, presente e con la domanda di prova riuscita", async () => {
+    expect((await verificaClaude({ esegui: claudeFinto().esegui, trova: () => null })).ok).toBe(false);
+    const f = claudeFinto();
+    const ok = await verificaClaude({ esegui: f.esegui, trova: () => "claude" });
     expect(ok.ok && ok.info.versione).toBe("2.1.330 (Claude Code)");
+    const prova = f.chiamate.find((c) => c.cmd[1] === "-p" && c.cmd[2] !== "--help")!;
+    expect(prova.cmd).toContain("--tools");
+    expect(prova.cwd).toBeTruthy(); // cartella vuota del cervello, fuori dal progetto
+  });
+  test("Claude Code installato ma senza accesso (come l'estensione di VS Code senza il comando collegato): errore con le istruzioni, senza domanda di prova", async () => {
+    const f = claudeFinto({ loggedIn: false });
+    const r = await verificaClaude({ esegui: f.esegui, trova: () => "claude" });
+    expect(!r.ok && r.errore).toContain("claude auth login");
+    expect(f.chiamate.some((c) => c.cmd[1] === "-p")).toBe(false);
+  });
+  test("token incollato: va nell'ambiente del processo; se Claude lo rifiuta, errore di accesso (auth status da solo direbbe «loggedIn»)", async () => {
+    const f = claudeFinto({ risposta: { type: "result", subtype: "success", is_error: true, result: "Invalid API key · Please run /login" } });
+    const r = await verificaClaude({ token: "sk-ant-oat01-finto", esegui: f.esegui, trova: () => "claude" });
+    expect(!r.ok && r.errore).toContain("non accetta l'accesso con il token");
+    expect(!r.ok && r.errore).not.toContain("sk-ant-oat01-finto");
+    expect(f.chiamate.filter((c) => c.cmd[1] === "auth" || (c.cmd[1] === "-p" && c.cmd[2] !== "--help")).every((c) => c.env?.CLAUDE_CODE_OAUTH_TOKEN === "sk-ant-oat01-finto")).toBe(true);
+  });
+  test("solo controlli veloci (apertura della pagina): niente domanda di prova", async () => {
+    const f = claudeFinto();
+    expect((await verificaClaude({ esegui: f.esegui, trova: () => "claude", prova: false })).ok).toBe(true);
+    expect(f.chiamate.some((c) => c.cmd[1] === "-p")).toBe(false);
+  });
+  test("il cervello senza accesso: l'allarme dice cosa fare", () => {
+    const r = interpretaUscita(1, JSON.stringify({ type: "result", subtype: "success", is_error: true, result: "Not logged in · Please run /login" }), false, 10);
+    expect(r.esito).toBe("errore");
+    expect(r.errore).toContain("claude auth login");
   });
 });
 
@@ -120,7 +161,7 @@ describe("server della configurazione", () => {
     const porta = 30000 + Math.floor(Math.random() * 20000);
     let finito = 0;
     const net = finto({ aggiornamenti: [msg(424242, "Io")] });
-    const c = avviaConfigurazione({ porta, esistenti: opt.esistenti ?? null, file, fetch: opt.fetch ?? net.f, codice: "ABCD-EFGH", esegui: async () => ({ codice: 0, uscita: "2.1.330 (Claude Code)" }), trovaClaude: () => "claude", alTermine: () => finito++ });
+    const c = avviaConfigurazione({ porta, esistenti: opt.esistenti ?? null, file, fetch: opt.fetch ?? net.f, codice: "ABCD-EFGH", esegui: claudeFinto().esegui, trovaClaude: () => "claude", alTermine: () => finito++ });
     const base = `http://127.0.0.1:${porta}`;
     const corpi: string[] = [];
     let cookie = "";
@@ -171,6 +212,9 @@ describe("server della configurazione", () => {
     expect((await s.post("/configurazione/telegram", { csrf: t, azione: "cerca" })).r.status).toBe(303);
     expect(s.net.chiamate.some((u) => u.includes("/sendMessage"))).toBe(true);
     expect((await s.get("/configurazione/claude")).t).toContain("Claude Code trovato");
+    expect((await s.get("/configurazione/riepilogo")).t).toContain("da controllare"); // senza la domanda di prova non è «pronto»
+    expect((await s.post("/configurazione/claude", { csrf: t })).r.headers.get("location")).toBe("/configurazione/riepilogo");
+    expect((await s.get("/configurazione/claude")).t).toContain("domanda di prova è riuscita");
     expect((await s.get("/configurazione/riepilogo")).t).toContain("Salva e avvia il bot");
     expect((await s.post("/configurazione/salva", { csrf: t })).r.status).toBe(200);
     const mod = await import(s.file);

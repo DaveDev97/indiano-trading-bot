@@ -36,7 +36,8 @@ interface Stato {
   chat: { id: string; nome: string }[] | null;
   chatProvata: boolean;
   telegramSaltato: boolean;
-  claude: { ok: boolean; testo: string } | null;
+  /** ok = installato e con l'accesso fatto; provato = anche la domanda di prova a `claude -p` è riuscita. */
+  claude: { ok: boolean; provato: boolean; testo: string } | null;
   salvato: boolean;
 }
 
@@ -88,7 +89,7 @@ export function avviaConfigurazione(o: OpzioniConfigurazione) {
     alpaca: !!st.alpaca,
     finnhub: st.finnhub,
     telegram: (!!st.telegram && !!st.v.telegramChatId && st.chatProvata) || st.telegramSaltato,
-    claude: !!st.claude,
+    claude: !!st.claude?.provato,
     riepilogo: st.salvato,
   });
 
@@ -163,13 +164,14 @@ ${completati().telegram ? html` <a class="btn" href="/configurazione/claude">Ava
         return pagina("Claude", passo, html`<h1>5. Il cervello: Claude Code</h1>
 <p class="introduzione">Il «cervello» del bot è Claude Code, chiamato dal computer. Sceglie tra i titoli che il codice ha già ammesso e spiega il perché. Senza Claude Code il bot non compra niente, ma protezioni e uscite continuano.</p>
 <div class="note">Il bot parte con il <b>modello predefinito</b> del tuo account Claude, che funziona con qualunque piano. Se il tuo piano include Opus, dopo l'avvio puoi sceglierlo in Impostazioni → AI: conviene per le decisioni di acquisto e per la review.</div>
-${st.claude ? (st.claude.ok ? html`<div class="note">✓ Claude Code trovato: ${st.claude.testo}.</div>` : html`<div class="alarm">${st.claude.testo}</div>`) : ""}${e}${n}
-<div class="card"><h3>Se non è installato</h3>
+${st.claude?.provato ? html`<div class="note">✓ Claude Code risponde (${st.claude.testo}): la domanda di prova è riuscita.</div>` : st.claude?.ok ? html`<div class="note">Claude Code trovato (${st.claude.testo}) e l'accesso risulta fatto. Premi «Controlla Claude Code» qui sotto: fa una domanda di prova, l'unico modo di essere sicuri che il cervello risponda.</div>` : st.claude ? html`<div class="alarm">${st.claude.testo}</div>` : ""}${e}${n}
+<div class="card"><h3>Se non è installato o non hai fatto l'accesso</h3>
 <p>Windows (PowerShell): <code>irm https://claude.ai/install.ps1 | iex</code><br>Linux, Raspberry Pi, macOS: <code>curl -fsSL https://claude.ai/install.sh | bash</code></p>
-<p>Poi apri un terminale nuovo, scrivi <code>claude</code> e accedi con il tuo account. Infine riapri questa pagina e premi «Controlla di nuovo».</p></div>
+<p>Poi apri un terminale nuovo e scrivi <code>claude auth login</code>: si apre il browser, accedi con il tuo account Claude. L'estensione di VS Code ha un accesso suo: anche se lì sei collegato, il comando <code>claude</code> va collegato a parte. Infine premi «Controlla Claude Code».</p></div>
 <form method="post" action="/configurazione/claude" class="card modulo"><input type="hidden" name="azione" value="token">
-<p><b>Token (facoltativo, consigliato)</b>. Se il bot parte dall'Utilità di pianificazione o dai timer di Linux, il login del terminale a volte non basta. Genera un token con <code>claude setup-token</code> e incollalo qui.${presente("claudeOauthToken") ? " C'è già un token salvato: lascia vuoto per tenerlo." : ""}</p>
-<label>Token di Claude<br><input type="password" name="oauthToken" autocomplete="off" spellcheck="false"></label>${avanti(csrf, passo, "Salva e controlla Claude Code")}</form>`, csrf);
+<p><b>Token (facoltativo, consigliato)</b>. Se il bot parte dall'Utilità di pianificazione o dai timer di Linux, il login del terminale a volte non basta. Genera un token con <code>claude setup-token</code> e incollalo qui; si salva solo se la domanda di prova funziona.${presente("claudeOauthToken") ? " C'è già un token salvato: lascia vuoto per tenerlo." : ""}</p>
+<label>Token di Claude<br><input type="password" name="oauthToken" autocomplete="off" spellcheck="false"></label>
+<p class="small muted">Il controllo chiede a Claude di rispondere «ok»: servono da 5 a 30 secondi, e consuma pochissimo del tuo piano.</p>${avanti(csrf, passo, "Controlla Claude Code")}</form>`, csrf);
       case "riepilogo": {
         const c = completati();
         const mancano = (["password", "alpaca", "finnhub"] as Passo[]).filter((p) => !c[p]);
@@ -180,7 +182,7 @@ ${riga("Password della dashboard", c.password, "almeno 12 caratteri")}
 ${riga("Alpaca (paper)", c.alpaca, st.alpaca ? `conto ${st.alpaca.stato}` : "chiavi da verificare")}
 ${riga("Finnhub", c.finnhub, "bilanci delle società")}
 ${riga("Telegram", c.telegram, st.telegramSaltato ? "saltato: niente messaggi finché non lo configuri" : st.telegram ? `@${st.telegram.username}` : "facoltativo")}
-${riga("Claude Code", !!st.claude?.ok, st.claude?.ok ? st.claude.testo : "senza, il bot non compra")}</table></div>
+${riga("Claude Code", !!st.claude?.provato, st.claude?.provato ? `${st.claude.testo}, risponde` : "da controllare: senza, il bot non compra")}</table></div>
 ${mancano.length ? html`<div class="alarm">Prima di salvare completa: ${mancano.map((p) => PASSI.find((x) => x[0] === p)![1]).join(", ")}.</div>` : html`<form method="post" action="/configurazione/salva" data-confirm="Salvare la configurazione e avviare il bot? Le chiavi vengono scritte in secrets.ts, su questo computer."><p>Le chiavi vengono scritte nel file <code>secrets.ts</code> di questo computer, escluso da git. Poi il bot si riavvia e trovi la pagina di accesso: entra con la password che hai scelto.</p>${avanti(csrf, passo, "Salva e avvia il bot")}</form>`}`, csrf);
       }
     }
@@ -253,8 +255,9 @@ ${errore ? html`<div class="alarm">${errore}</div>` : ""}
     if (req.method === "GET") {
       if (!PASSI.some((p) => p[0] === passo)) return vai("/configurazione/password");
       if (passo === "claude" && !st.claude) {
-        const c = await verificaClaude(o.esegui, o.trovaClaude);
-        st.claude = c.ok ? { ok: true, testo: c.info.versione } : { ok: false, testo: c.errore };
+        // all'apertura della pagina solo i controlli veloci (installato, accesso fatto); la domanda di prova parte dal pulsante
+        const c = await verificaClaude({ token: st.v.claudeOauthToken, esegui: o.esegui, trova: o.trovaClaude, prova: false });
+        st.claude = c.ok ? { ok: true, provato: false, testo: c.info.versione } : { ok: false, provato: false, testo: c.errore };
       }
       return risposta(vista(passo, s.csrf));
     }
@@ -345,13 +348,12 @@ ${errore ? html`<div class="alarm">${errore}</div>` : ""}
       }
       case "/configurazione/claude": {
         const t = campo("oauthToken");
-        if (t) {
-          if (/\s/.test(t)) return risposta(vista("claude", s.csrf, { errore: "Il token non contiene spazi: copialo per intero dall'uscita di claude setup-token." }), 400);
-          registerSecret(t);
-          st.v.claudeOauthToken = t;
-        }
-        const c = await verificaClaude(o.esegui, o.trovaClaude);
-        st.claude = c.ok ? { ok: true, testo: c.info.versione } : { ok: false, testo: c.errore };
+        if (t && /\s/.test(t)) return risposta(vista("claude", s.csrf, { errore: "Il token non contiene spazi: copialo per intero dall'uscita di claude setup-token." }), 400);
+        if (t) registerSecret(t);
+        // controllo completo, con una domanda di prova: un token incollato si tiene solo se funziona
+        const c = await verificaClaude({ token: t || st.v.claudeOauthToken, esegui: o.esegui, trova: o.trovaClaude, prova: true });
+        if (c.ok && t) st.v.claudeOauthToken = t;
+        st.claude = c.ok ? { ok: true, provato: true, testo: c.info.versione } : { ok: false, provato: false, testo: c.errore };
         return vai(`/configurazione/${c.ok ? "riepilogo" : "claude"}`);
       }
       case "/configurazione/salva": {

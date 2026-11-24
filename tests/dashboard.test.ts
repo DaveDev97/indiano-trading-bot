@@ -8,7 +8,11 @@ import { leggiPiani } from "../src/run/piani.ts";
 import { appendUsage, readUsage, type RigaConsumo } from "../src/brain/usage.ts";
 import { _resetSecretsForTest, registerSecret } from "../src/util/redact.ts";
 import { scenario } from "./scenario.ts";
-import { makeCtx } from "./ctx.ts";
+import { aliveProbe, makeCtx } from "./ctx.ts";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { scansioneIniziale } from "../src/dashboard/scansione-manuale.ts";
+import { dateInTz, TZ_ROME } from "../src/util/time.ts";
 import { rmRoot } from "./helpers.ts";
 
 const PWD = "password-di-prova-123";
@@ -381,6 +385,45 @@ describe("dashboard: selezione con override, scansione manuale, periodi del graf
       expect(t).toContain('data-bklit="linee"');
     }
     d.stop();
+    rmRoot(ctx.paths);
+  });
+  test("scansione in corso: avanzamento in JSON ogni secondo, scheda che si aggiorna da sola (niente «Aggiorna» a mano), anche in Panoramica", async () => {
+    const ctx = makeCtx({ now: "2026-11-21T09:00:00Z", probe: aliveProbe(new Set([process.pid, 4242])) });
+    const avviata = new Date(Date.now() - 60_000).toISOString();
+    scrivi(ctx.paths.scanLock, { pid: 4242, procStart: 1, started: avviata });
+    fs.mkdirSync(ctx.paths.logs, { recursive: true });
+    fs.writeFileSync(path.join(ctx.paths.logs, `scan-${dateInTz(new Date(avviata), TZ_ROME)}.log`), `${JSON.stringify({ ts: new Date().toISOString(), livello: "info", evento: "scansione in corso", fatti: 12000, totale: 40000 })}\n`);
+    const { d, base, login } = await avvia(ctx);
+    expect((await fetch(`${base}/stato/scansione`)).status).toBe(401); // dietro la sessione, come tutto il resto
+    const s = await login();
+    const j = await (await fetch(`${base}/stato/scansione`, { headers: { cookie: s.cookie } })).json();
+    expect(j).toEqual({ inCorso: true, testo: "bilanci (Finnhub) · 12.000 di 40.000", quota: 0.3 });
+    const sel = await (await fetch(`${base}/selezione`, { headers: { cookie: s.cookie } })).text();
+    expect(sel).toContain("data-scansione");
+    expect(sel).toContain("12.000 di 40.000");
+    expect(sel).not.toContain(">Aggiorna</a>");
+    expect(sel).not.toContain("Lancia la scansione");
+    const pan = await (await fetch(`${base}/`, { headers: { cookie: s.cookie } })).text();
+    expect(pan).toContain("data-scansione");
+    expect(pan).toContain("Vai a Selezione");
+    expect(await (await fetch(`${base}/app.js`)).text()).toContain("/stato/scansione");
+    // finita (lock tolto): la pagina che interroga riceve inCorso false e si ricarica
+    fs.rmSync(ctx.paths.scanLock);
+    expect((await (await fetch(`${base}/stato/scansione`, { headers: { cookie: s.cookie } })).json()).inCorso).toBe(false);
+    d.stop();
+    rmRoot(ctx.paths);
+  });
+  test("prima scansione automatica: parte solo se la lista dei titoli non c'è e non ne gira già una", async () => {
+    const ctx = makeCtx({ now: "2026-11-21T09:00:00Z", probe: aliveProbe(new Set([process.pid, 4242])) });
+    const lanci: number[] = [];
+    const lancia = async () => (lanci.push(1), { ok: true, messaggio: "ok" });
+    scrivi(ctx.paths.scanLock, { pid: 4242, procStart: 1, started: new Date().toISOString() });
+    expect(await scansioneIniziale(ctx, lancia)).toBe(false); // ne gira già una
+    fs.rmSync(ctx.paths.scanLock);
+    expect(await scansioneIniziale(ctx, lancia)).toBe(true); // installazione nuova
+    expect((await runScan(ctx)).ok).toBe(true);
+    expect(await scansioneIniziale(ctx, lancia)).toBe(false); // la lista c'è
+    expect(lanci.length).toBe(1);
     rmRoot(ctx.paths);
   });
   test("universo: l'anteprima mostra l'impatto stimato e senza averla vista il cambio non si salva", async () => {

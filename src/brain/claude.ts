@@ -97,7 +97,12 @@ export function buildArgs(exe: string, f: ClaudeFlags, o: Pick<ClaudeOpts, "sche
   return a;
 }
 
-const ZERO_CONSUMI: Consumi = { costoUsd: null, token: null, perModello: {}, durataApiMs: null, turni: null, subtype: null };
+/** Il testo d'errore di Claude Code dice che manca l'accesso (login non fatto, token non valido o scaduto)? */
+export function problemaDiAccesso(testo: string): boolean {
+  return /not logged in|\/login|invalid api key|oauth token|authentication[_ ]?error|unauthori[sz]ed|\b401\b|credential/i.test(testo);
+}
+
+const ZERO_CONSUMI: Consumi ={ costoUsd: null, token: null, perModello: {}, durataApiMs: null, turni: null, subtype: null };
 
 /** Estrae i consumi dal JSON finale. Costo e token da total_cost_usd e modelUsage, non da usage. */
 export function estraiConsumi(j: any): Consumi {
@@ -151,7 +156,11 @@ export function interpretaUscita(code: number | null, stdout: string, timedOut: 
   const modello = Object.keys(consumi.perModello)[0] ?? null;
   if (j.subtype === "error_max_budget_usd") return { esito: "budget superato", structured: null, testo: null, consumi, durataMs, errore: "tetto per chiamata superato", modello };
   if (code !== 0 || j.is_error === true || (j.subtype && j.subtype !== "success")) {
-    return { esito: "errore", structured: null, testo: typeof j.result === "string" ? j.result : null, consumi, durataMs, errore: redact(`uscita ${code}, ${j.subtype ?? "errore"}: ${String(j.result ?? "").slice(0, 300)}`), modello };
+    const testo = String(j.result ?? "");
+    const errore = problemaDiAccesso(testo)
+      ? `Claude Code non ha l'accesso al tuo account («${testo.slice(0, 120)}»). Apri un terminale sul computer del bot e scrivi «claude auth login», poi accedi: dalla sveglia dopo il cervello torna a funzionare`
+      : `uscita ${code}, ${j.subtype ?? "errore"}: ${testo.slice(0, 300)}`;
+    return { esito: "errore", structured: null, testo: typeof j.result === "string" ? j.result : null, consumi, durataMs, errore: redact(errore), modello };
   }
   if (j.structured_output === undefined || j.structured_output === null) {
     return { esito: "risposta non valida", structured: null, testo: typeof j.result === "string" ? j.result : null, consumi, durataMs, errore: "structured_output assente", modello };

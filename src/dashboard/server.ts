@@ -23,7 +23,7 @@ import { svuotaCache } from "./dati.ts";
 import { paginaSelezione, paginaSelezioneDettaglio } from "./pagine-selezione.ts";
 import { paginaGuida } from "./pagine-guida.ts";
 import { CHIAVI_IMPATTO, stimaImpatto } from "./impatto-universo.ts";
-import { lanciaScansione, statoScansione } from "./scansione-manuale.ts";
+import { lanciaScansione, statoScansione, testoAvanzamento } from "./scansione-manuale.ts";
 import { modificaOverride } from "../scan/override.ts";
 import type { Watchlist } from "../scan/scan.ts";
 
@@ -137,10 +137,15 @@ export function avviaDashboard(ctx: Ctx, o: OpzioniServer) {
     const flash = s.flash;
     s.flash = null;
     const p = url.pathname;
-    if (p === "/") return htmlResp(await paginaPanoramica(ctx, s.csrf, url.searchParams, flash));
+    if (p === "/") return htmlResp(await paginaPanoramica(ctx, s.csrf, url.searchParams, flash, await statoScansione(ctx)));
     if (p.startsWith("/posizione/")) return htmlResp(await paginaPosizione(ctx, s.csrf, decodeURIComponent(p.slice(11)).toUpperCase().replace(/[^A-Z0-9.\-]/g, ""), flash));
     if (p === "/guida") return htmlResp(paginaGuida(ctx, s.csrf));
     if (p === "/selezione") return htmlResp(paginaSelezione(ctx, s.csrf, flash, await statoScansione(ctx)));
+    // avanzamento della scansione, letto ogni secondo dalla pagina (solo lettura, dietro la stessa sessione)
+    if (p === "/stato/scansione") {
+      const sc = await statoScansione(ctx);
+      return new Response(JSON.stringify({ inCorso: sc.inCorso, testo: testoAvanzamento(sc), quota: sc.fatti !== null && sc.totale ? sc.fatti / sc.totale : null }), { headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
+    }
     if (p.startsWith("/selezione/")) return htmlResp(await paginaSelezioneDettaglio(ctx, s.csrf, decodeURIComponent(p.slice(11)).toUpperCase().replace(/[^A-Z0-9.-]/g, ""), url.searchParams, flash));
     if (p === "/storico") return htmlResp(paginaStorico(ctx, s.csrf, url.searchParams));
     if (p === "/ombra") return htmlResp(paginaOmbra(ctx, s.csrf));

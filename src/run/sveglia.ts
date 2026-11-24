@@ -259,7 +259,7 @@ async function giro(ctx: Ctx, o: OpzioniSveglia, lock: HeldLock, r: EsitoSveglia
   const etaWl = wl ? giorniTra(wl.generata, now) : null;
   let wlProblema: string | null = null;
   if (ov.errore) wlProblema = `${ov.errore}: un titolo tolto a mano potrebbe tornare comprabile`;
-  else if (!wl) wlProblema = "watchlist assente: lancia `bun run scan`";
+  else if (!wl) wlProblema = "watchlist assente, la scansione non è ancora finita (la prima parte da sola all'avvio della dashboard, oppure dal pulsante in Selezione)";
   else if (etaWl! > P.n("settori.watchlistMaxGiorni")) wlProblema = `watchlist vecchia di ${etaWl} giorni (massimo ${P.n("settori.watchlistMaxGiorni")})`;
   if (wlProblema) allarmi.push(`${wlProblema}: nessun acquisto.`);
 

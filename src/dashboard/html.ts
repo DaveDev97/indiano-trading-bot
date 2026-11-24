@@ -176,7 +176,8 @@ details.card>summary{cursor:pointer}
 button.piccolo{min-height:32px;padding:0 14px;font-size:13.5px}
 @media (max-width:560px){.riga.con-azione{grid-template-columns:32px minmax(0,1fr)}.riga.con-azione .n,.riga.con-azione .azione{grid-column:2}}
 .card.scansione{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 20px;margin-top:16px}.card.scansione h3{margin:0 0 4px}.card.scansione p{margin:0}
-.avanzamento{height:6px;border-radius:3px;background:oklch(100% 0 0 / 0.07);margin-top:10px;min-width:220px;overflow:hidden}.avanzamento span{display:block;height:100%;background:var(--color-accent);border-radius:3px}
+.avanzamento{height:6px;border-radius:3px;background:oklch(100% 0 0 / 0.07);margin-top:10px;min-width:220px;overflow:hidden}.avanzamento span{display:block;height:100%;background:var(--color-accent);border-radius:3px;transition:width .6s ease}.avanzamento[hidden]{display:none}
+@media (prefers-reduced-motion:reduce){.avanzamento span{transition:none}}
 .testa-titolo{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 20px}.testa-titolo .azione{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .indice ol{columns:2 260px;margin:0;padding-left:22px}.indice li{padding:3px 0;break-inside:avoid}section.guida{scroll-margin-top:84px}section.guida .card ul{margin:6px 0;padding-left:20px}section.guida .card li{padding:3px 0;line-height:1.55}section.guida .card p{line-height:1.6}
 .legenda-linee{list-style:none;margin:12px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--color-ink-2)}.legenda-linee i{display:inline-block;width:18px;height:0;border-top:2px solid var(--c);margin-right:8px;vertical-align:middle}.legenda-linee i.tratto{border-top-style:dashed}
@@ -197,6 +198,14 @@ document.addEventListener('mousemove',function(e){var t=e.target.closest&&e.targ
 tip.textContent=t.getAttribute('data-tip');tip.style.display='block';var x=e.clientX+14,y=e.clientY+14;if(x+tip.offsetWidth>innerWidth)x=e.clientX-tip.offsetWidth-10;tip.style.left=x+'px';tip.style.top=y+'px';});
 document.addEventListener('submit',function(e){var f=e.target;var m=f.getAttribute('data-confirm');if(m&&!confirm(m)){e.preventDefault();return;}
 var b=f.querySelector('button[type=submit],button:not([type])');if(b){setTimeout(function(){b.disabled=true;b.textContent='Attendere…';},0);}});
+var sc=document.querySelector('[data-scansione]');
+if(sc){var st=sc.querySelector('[data-sc-testo]'),sb=sc.querySelector('[data-sc-barra]'),sn=sc.querySelector('[data-sc-nota]'),errori=0;
+var giro=function(){if(document.hidden){setTimeout(giro,1000);return;}
+fetch('/stato/scansione',{cache:'no-store',credentials:'same-origin'}).then(function(r){if(!r.ok)throw new Error('http');return r.json();}).then(function(j){errori=0;
+if(!j.inCorso){if(sn)sn.textContent='Scansione finita: ricarico la pagina…';setTimeout(function(){location.reload();},800);return;}
+if(st)st.textContent=j.testo;if(sb&&j.quota!==null){sb.parentNode.hidden=false;sb.style.width=(j.quota*100).toFixed(1)+'%';}setTimeout(giro,1000);})
+.catch(function(){if(++errori>=5){if(sn)sn.textContent='Aggiornamento automatico interrotto: ricarica la pagina.';return;}setTimeout(giro,1000);});};
+setTimeout(giro,1000);}
 })();
 `;
 

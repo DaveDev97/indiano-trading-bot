@@ -518,3 +518,28 @@ Revisione fatta anche da due agenti esterni, senza contesto sul progetto, che ha
   - dopo mezzanotte a Roma si recupera la seduta di New York ancora in corso;
   - due tick insieme: una sola esecuzione;
   - dopo l'orario della chiusura il recupero non compra mai.
+
+## Prima scansione automatica, avanzamento in diretta, controllo vero di Claude (24/11/2026)
+
+1. **È corretto?**
+   - La scansione automatica parte solo se manca la lista e non c'è un lock di scansione vivo.
+   - Più riavvii della dashboard non lanciano due scansioni: la scansione ha il suo lock. Se il riavvio cade nel secondo prima che il processo prenda il lock, il secondo processo trova il lock e si ferma.
+   - Lo stato «appena lanciata» dura al massimo 20 secondi e finisce prima se la lista viene riscritta, così una scansione molto rapida non resta «in corso» per finta.
+   - Il controllo di Claude distingue tre casi: non installato, installato senza accesso, accesso rifiutato alla prova.
+2. **Funziona?**
+   - Test nuovi:
+     - JSON di avanzamento dietro la sessione (401 senza sessione);
+     - scheda che si aggiorna senza «Aggiorna», anche in Panoramica, e fine scansione vista dalla pagina;
+     - scansione iniziale: parte solo senza lista e senza un'altra scansione in corso;
+     - Claude: assente, senza accesso (niente domanda di prova), token rifiutato (il token non compare nell'errore e va nell'ambiente del processo), solo controlli veloci, percorso completo della configurazione con la prova.
+   - Prova reale su questo PC, con i soli controlli veloci: risponde «installato ma non hai fatto l'accesso», che è proprio la situazione del comando `claude` qui.
+   - La domanda di prova vera non l'ho eseguita: senza accesso fallirebbe comunque.
+   - 230 test verdi.
+3. **Aiuta a guadagnare?**
+   - Un'installazione nuova non resta ferma fino al sabato.
+   - Il bot non parte con un cervello che non risponde senza che la configurazione lo dica.
+   - Nessun rischio di ordini: la scansione non compra.
+4. **È sicuro?**
+   - Il token incollato viene registrato in `redact` prima di qualsiasi comando ed entra solo nell'ambiente del processo figlio, mai negli argomenti.
+   - L'endpoint di stato espone solo fase e conteggi.
+   - La scansione automatica usa lo stesso lancio del pulsante, staccato dalla dashboard.

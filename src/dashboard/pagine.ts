@@ -13,7 +13,8 @@ import { conto, rendimentoDa, statoBot, storia } from "./dati.ts";
 import { estremi } from "./consumi.ts";
 import { nuovoCodice } from "./azioni.ts";
 import { errText } from "../util/redact.ts";
-import { classificaSettori as classificaSettoriHtml, nomeSettore } from "./pagine-selezione.ts";
+import { cardScansioneInCorso, classificaSettori as classificaSettoriHtml, nomeSettore } from "./pagine-selezione.ts";
+import type { StatoScansione } from "./scansione-manuale.ts";
 
 export function paginaLogin(errore?: string): string {
   return pagina("Accesso", "", html`<h1>Accesso</h1>
@@ -27,8 +28,11 @@ function messaggio(m?: { ok: boolean; testo: string } | null): Safe {
   return m ? html`<div class="${m.ok ? "note" : "alarm"}">${m.testo}</div>` : raw("");
 }
 
-export async function paginaPanoramica(ctx: Ctx, csrf: string, q: URLSearchParams, flash?: { ok: boolean; testo: string } | null): Promise<string> {
+export async function paginaPanoramica(ctx: Ctx, csrf: string, q: URLSearchParams, flash?: { ok: boolean; testo: string } | null, scansione?: StatoScansione): Promise<string> {
   const st = await statoBot(ctx);
+  // l'allarme «watchlist assente» dell'ultima sveglia non vale più se la lista ora c'è o se la scansione sta girando
+  if (st.allarmi && (st.watchlist || scansione?.inCorso)) st.allarmi = { ...st.allarmi, allarmi: st.allarmi.allarmi.filter((a) => !a.includes("watchlist assente")) };
+  const cardScan = scansione?.inCorso ? cardScansioneInCorso(scansione, true) : raw("");
   let corpo: Safe;
   try {
     const c = await conto(ctx);
@@ -81,7 +85,7 @@ export async function paginaPanoramica(ctx: Ctx, csrf: string, q: URLSearchParam
     // 4. settori: classifica con barre sottili (rendimento in più di SPY), diversa per tipo dal grafico principale
     const wl = st.watchlist;
     const periodo = wl?.forza.periodo ?? st.P.n("settori.periodoForza");
-    let classificaSettori: Safe = raw(`<p class="muted small">Watchlist assente: lancia la scansione.</p>`);
+    let classificaSettori: Safe = raw(scansione?.inCorso ? `<p class="muted small">Lista dei titoli in preparazione: la scansione è in corso.</p>` : `<p class="muted small">Lista dei titoli assente: <a href="/selezione">lancia la scansione</a>.</p>`);
     if (wl) {
       classificaSettori = html`${classificaSettoriHtml(wl, periodo)}<p class="small"><a href="/selezione">Come sono stati scelti i titoli →</a></p>`;
     }
@@ -106,7 +110,7 @@ export async function paginaPanoramica(ctx: Ctx, csrf: string, q: URLSearchParam
 <span class="n"><span class="v ${cls(pr - p.avgEntryPrice)}">${pct(pr / p.avgEntryPrice - 1)}</span><span class="d" style="display:block">${usd((pr - p.avgEntryPrice) * p.qty, 0)}</span></span></a>`;
     });
     const filtri = html`<div class="filters">${[["1s", "1 settimana"], ["1m", "1 mese"], ["3m", "3 mesi"], ["tutto", "Tutto"]].map(([k, n]) => html`<a class="btn" href="/?grafico=${k}" ${k === g ? raw('aria-current="true"') : ""}>${n}</a>`)}</div>`;
-    corpo = html`<h1>Panoramica</h1>${messaggio(flash)}
+    corpo = html`<h1>Panoramica</h1>${messaggio(flash)}${cardScan}
 ${(st.allarmi?.allarmi ?? []).map((a) => html`<div class="alarm">${a}</div>`)}
 <div class="tally">
 <div><div class="k">Patrimonio</div><div class="v" data-numero="${Math.round(eq)}" data-formato="usd0">${usd(eq, 0)}</div><div class="s">oggi <span class="${cls(botOggi)}">${pct(botOggi)}</span>, SPY ${pct(c.spyOggi)}</div></div>
@@ -122,7 +126,7 @@ ${per.map((x) => html`<tr><td>${x.n}</td><td class="n ${cls(x.bot)}">${pct(x.bot
 <h2>Posizioni (${c.posizioni.length})</h2>${c.posizioni.length ? html`<div class="lista">${righe}</div>` : html`<div class="note">Nessuna posizione aperta. Il bot compra alla sveglia di apertura, solo titoli che superano tutti i controlli.</div>`}
 ${statoHtml(st, c.mercatoAperto)}`;
   } catch (e) {
-    corpo = html`<h1>Panoramica</h1>${messaggio(flash)}<div class="alarm">Broker non raggiungibile: ${errText(e)}</div>${statoHtml(st, null)}`;
+    corpo = html`<h1>Panoramica</h1>${messaggio(flash)}${cardScan}<div class="alarm">Broker non raggiungibile: ${errText(e)}</div>${statoHtml(st, null)}`;
   }
   return pagina("Panoramica", "/", corpo, { csrf });
 }

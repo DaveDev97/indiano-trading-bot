@@ -36,7 +36,7 @@ Da installare ci sono solo due programmi.
   - Windows: `irm https://claude.ai/install.ps1 | iex`
   - Linux: `curl -fsSL https://claude.ai/install.sh | bash`
 
-  Dopo l'installazione apri un terminale nuovo, lancia `claude` una volta e accedi con il tuo account Claude: è lui che paga le chiamate del "cervello". Il token di `claude setup-token` è facoltativo. La configurazione guidata lo chiede, e lo consiglia se il bot parte dall'Utilità di pianificazione o dai timer di Linux.
+  Dopo l'installazione apri un terminale nuovo, lancia `claude auth login` e accedi con il tuo account Claude: è lui che paga le chiamate del "cervello". L'estensione di VS Code ha un accesso suo: anche se lì sei collegato, il comando `claude` va collegato a parte (`claude auth status` dice se lo è). Il token di `claude setup-token` è facoltativo. La configurazione guidata lo chiede, e lo consiglia se il bot parte dall'Utilità di pianificazione o dai timer di Linux.
 
 Servono poi tre account gratuiti. Non devi crearli prima: la configurazione guidata del primo avvio ti spiega passo per passo come farlo, e verifica ogni chiave.
 
@@ -66,13 +66,13 @@ Inoltre:
    2. **Alpaca**: crea l'account, passa al conto *Paper* e genera le chiavi (iniziano con `PK`); la pagina le verifica sul conto paper;
    3. **Finnhub**: registrati e copia la chiave gratuita; la pagina la verifica;
    4. **Telegram**: crei il bot con **@BotFather** (`/newbot`, nome, username che finisce con `bot`) e incolli il token. Poi premi *Avvia* nella chat con il tuo bot, e la pagina trova da sola la tua chat e ti manda un messaggio di prova. Il passo si può saltare;
-   5. **Claude Code**: la pagina controlla che sia installato e, se vuoi, salva il token di `claude setup-token`;
+   5. **Claude Code**: la pagina controlla che sia installato e che l'accesso sia fatto, poi fa una domanda di prova a `claude -p`. Se vuoi, salva il token di `claude setup-token`, ma solo se la prova riesce;
    6. **riepilogo** e «Salva e avvia il bot».
 
    Le chiavi vengono scritte in `secrets.ts`, su quel computer, e la pagina non le rimostra mai. Poi il bot si riavvia da solo e trovi la pagina di accesso. Il motore, nel frattempo, aspetta la configurazione senza andare in errore. `secrets.ts` non entra mai in git né nei pacchetti. Chi preferisce può ancora compilarlo a mano partendo da `secrets.example.ts`. Per rifare la configurazione da zero: chiudi il bot, rinomina `secrets.ts` e rilancia `start avvia`.
 3. **Prova tutto senza chiavi:** `start test`, poi `start once --fake --slot briefing`.
 4. **Sonda reale:** `start probe` verifica Alpaca, Finnhub e il cervello e scrive [docs/campi-dati.md](docs/campi-dati.md).
-5. **Prima scansione:** `start scan` (60–90 minuti la prima volta; poi riprende dalla cache).
+5. **Prima scansione:** parte da sola all'avvio della dashboard, se la lista dei titoli non c'è ancora (60–90 minuti la prima volta; poi riprende dalla cache). L'avanzamento si aggiorna da solo ogni secondo, in Panoramica e in Selezione. A mano: `start scan`, oppure il pulsante in Selezione.
 6. **Pianificazione:** `start installa`.
 
 Su Windows i comandi sono `.\start.ps1 <comando>` da PowerShell, oppure `start.cmd <comando>` da cmd o con doppio clic. Su Linux sono `./start.sh <comando>`.

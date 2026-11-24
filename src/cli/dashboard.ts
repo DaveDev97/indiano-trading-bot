@@ -14,6 +14,7 @@ import { errText, redact, registerSecret } from "../util/redact.ts";
 import { dateInTz, TZ_ROME } from "../util/time.ts";
 import { campiMancanti, CODICE_RIAVVIO } from "../setup/segreti-file.ts";
 import { avviaConfigurazione } from "../setup/server-configurazione.ts";
+import { scansioneIniziale } from "../dashboard/scansione-manuale.ts";
 
 const args = parseArgs();
 chiudiSeOrfano();
@@ -69,4 +70,6 @@ async function avviaNormale(fake: boolean) {
   registerSecret(password);
   const d = avviaDashboard(ctx, { password, porta });
   console.log(`Dashboard su ${d.url}${fake ? " (modalità finta, password: dashboard-finta-123)" : ""}. Legge i pulsanti di Telegram ogni 30 secondi.`);
+  // installazione nuova (o lista cancellata): la prima scansione parte da sola, così il bot non resta fermo fino al sabato
+  if (await scansioneIniziale(ctx)) console.log("Lista dei titoli assente: avviata la prima scansione (l'avanzamento è nella pagina Selezione; con la cache vuota dura circa un'ora).");
 }

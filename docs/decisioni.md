@@ -260,3 +260,13 @@ Formato: data — dubbio — scelta — motivo. Si sceglie sempre l'opzione più
     - Opus non è disponibile in tutti i piani di Claude, quindi chi installa da zero parte con il modello predefinito del proprio account, senza `--model`, per decisioni, compiti semplici e review.
     - Chi ha Opus nel piano lo sceglie in Impostazioni → AI. Le spiegazioni e la configurazione guidata lo dicono.
     - Le installazioni esistenti tengono i loro parametri. Su questo PC la v3 resta con Opus per decisioni e review e Sonnet per i compiti semplici.
+
+51. **Prima scansione automatica e controllo vero di Claude** (24/11/2026, richiesta dell'utente dopo un'installazione nuova partita con «watchlist assente» e «Not logged in»).
+    - **Scansione:** all'avvio della dashboard, se `state/watchlist.json` non c'è e non gira già una scansione, la scansione parte da sola, nello stesso modo del pulsante in Selezione. Se fallisce, riparte al prossimo avvio della dashboard. Durante la scansione la sveglia non compra, come prima: senza lista non ci sono candidati.
+    - **Avanzamento:** la pagina legge `/stato/scansione` ogni secondo (dietro la sessione, senza scritture) e a fine scansione si ricarica. Il pulsante «Aggiorna» non c'è più. La scheda compare anche in Panoramica, e lì l'allarme «watchlist assente» dell'ultima sveglia si nasconde se la lista ora c'è o se la scansione sta girando.
+    - **Claude:** `claude --version` non basta: il comando può essere installato ma senza accesso. L'estensione di VS Code ha un accesso separato, come su questo PC. Il controllo ora fa tre cose.
+      - Esegue `claude auth status --json`: è gratis e scopre «loggedIn: false».
+      - Fa una domanda di prova a `claude -p`, con le precauzioni del cervello: niente strumenti, cartella fuori dal progetto. Serve perché con un token qualsiasi `auth status` risponde «loggedIn: true». La prova consuma pochissimo e non entra nel registro dei consumi, perché la configurazione gira prima che esista lo stato del bot.
+      - Salva un token incollato solo se la prova riesce.
+    - All'apertura della pagina si fanno solo i controlli veloci; la prova parte dal pulsante. Il passo Claude conta come fatto solo con la prova riuscita.
+    - Se il cervello risponde «Not logged in», «Invalid API key» e simili, l'allarme spiega cosa fare: `claude auth login`.
