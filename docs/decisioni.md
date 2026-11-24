@@ -255,3 +255,8 @@ Formato: data — dubbio — scelta — motivo. Si sceglie sempre l'opzione più
     - Le sveglie forzate (`once` fuori orario) hanno id con il suffisso `f`, e contano come fatte per il recupero.
     - Un file degli override illeggibile blocca gli acquisti.
     - Il motore si riavvia quando `secrets.ts` cambia.
+
+50. **Modelli AI iniziali a «predefinito»** (24/11/2026, richiesta dell'utente; aggiorna la 35).
+    - Opus non è disponibile in tutti i piani di Claude, quindi chi installa da zero parte con il modello predefinito del proprio account, senza `--model`, per decisioni, compiti semplici e review.
+    - Chi ha Opus nel piano lo sceglie in Impostazioni → AI. Le spiegazioni e la configurazione guidata lo dicono.
+    - Le installazioni esistenti tengono i loro parametri. Su questo PC la v3 resta con Opus per decisioni e review e Sonnet per i compiti semplici.

@@ -229,10 +229,13 @@ describe("dashboard: review cliccabili, impostazioni a schede, modello usato", (
     d.stop();
     rmRoot(ctx.paths);
   });
-  test("modelli AI: Opus per le decisioni, Sonnet per i compiti semplici; con «predefinito» dice quale ha usato", async () => {
+  test("modelli AI: si parte da «predefinito»; scelti Opus e Sonnet li mostra; con «predefinito» dice quale ha usato", async () => {
     const { d, base, login, ctx } = await avvia();
     const s = await login();
     let t = await (await fetch(`${base}/impostazioni?scheda=ai`, { headers: { cookie: s.cookie } })).text();
+    expect(t).toContain("predefinito: modello non ancora noto");
+    saveParams(ctx.paths, { "ai.modelloDecisioni": "claude-opus-5-5", "ai.modelloSemplici": "claude-sonnet-5-5" }, { autore: "test", versioneAttesa: loadParams(ctx.paths).params.file.versione });
+    t = await (await fetch(`${base}/impostazioni?scheda=ai`, { headers: { cookie: s.cookie } })).text();
     expect(t).toContain("usa claude-opus-5-5");
     expect(t).toContain("usa claude-sonnet-5-5");
     saveParams(ctx.paths, { "ai.modelloSemplici": "predefinito" }, { autore: "test", versioneAttesa: loadParams(ctx.paths).params.file.versione });

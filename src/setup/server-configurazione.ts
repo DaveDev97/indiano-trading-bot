@@ -162,6 +162,7 @@ ${completati().telegram ? html` <a class="btn" href="/configurazione/claude">Ava
       case "claude":
         return pagina("Claude", passo, html`<h1>5. Il cervello: Claude Code</h1>
 <p class="introduzione">Il «cervello» del bot è Claude Code, chiamato dal computer. Sceglie tra i titoli che il codice ha già ammesso e spiega il perché. Senza Claude Code il bot non compra niente, ma protezioni e uscite continuano.</p>
+<div class="note">Il bot parte con il <b>modello predefinito</b> del tuo account Claude, che funziona con qualunque piano. Se il tuo piano include Opus, dopo l'avvio puoi sceglierlo in Impostazioni → AI: conviene per le decisioni di acquisto e per la review.</div>
 ${st.claude ? (st.claude.ok ? html`<div class="note">✓ Claude Code trovato: ${st.claude.testo}.</div>` : html`<div class="alarm">${st.claude.testo}</div>`) : ""}${e}${n}
 <div class="card"><h3>Se non è installato</h3>
 <p>Windows (PowerShell): <code>irm https://claude.ai/install.ps1 | iex</code><br>Linux, Raspberry Pi, macOS: <code>curl -fsSL https://claude.ai/install.sh | bash</code></p>

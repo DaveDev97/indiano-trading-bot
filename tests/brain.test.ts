@@ -135,6 +135,10 @@ import { scenario } from "./scenario.ts";
 describe("modelli per tipo di compito", () => {
   test("apertura e metà seduta usano il modello delle decisioni complesse, briefing e chiusura quello semplice", async () => {
     const sc = scenario({ simboli: [["AAA", "Technology"]] });
+    // all'installazione i modelli sono «predefinito» (nessun --model): qui si scelgono, come fa chi ha Opus nel piano
+    const P0 = loadParams(sc.ctx.paths).params;
+    expect([P0.s("ai.modelloDecisioni"), P0.s("ai.modelloSemplici"), P0.s("ai.modelloReview")]).toEqual(["predefinito", "predefinito", "predefinito"]);
+    saveParams(sc.ctx.paths, { "ai.modelloDecisioni": "claude-opus-5-5", "ai.modelloSemplici": "claude-sonnet-5-5" }, { autore: "test", versioneAttesa: P0.file.versione });
     for (const t of ["briefing", "apertura", "meta", "chiusura"] as const) {
       const s = sc.slot(t);
       sc.setNowAt(s);
