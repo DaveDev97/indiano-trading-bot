@@ -26,6 +26,8 @@ export interface VoceClassifica {
   criteri: ValutazioneProfilo["criteri"];
   capitalizzazione: number | null;
   prezzo: number;
+  /** Messo nella lista a mano dalla dashboard (dalla zona grigia), non dalla classifica. */
+  override?: "aggiunto";
 }
 
 /** Percentile (0–100) di v tra i valori, con la direzione indicata. Uguaglianze a metà. */

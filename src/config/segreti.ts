@@ -1,4 +1,5 @@
 // Caricamento di secrets.ts (solo import, mai stampa) e controlli di sicurezza all'avvio (§3.1).
+import * as fs from "node:fs";
 import * as path from "node:path";
 import { ENV_TRADING_URL_VARS, PAPER_TRADING_URL } from "./costanti.ts";
 import { PROJECT_ROOT } from "./paths.ts";
@@ -27,12 +28,14 @@ function registerAll(obj: unknown): void {
 
 /** Importa secrets.ts. Restituisce null se manca. Registra tutti i valori per redact(). */
 export async function loadSecrets(file = path.join(PROJECT_ROOT, "secrets.ts")): Promise<Secrets | null> {
+  // "assente" solo se il file non esiste: un secrets.ts scritto a mano che importa un modulo mancante o legge un file
+  // che non c'è dà anche lui "Cannot find…", ma va segnalato, non scambiato per assente (e poi sovrascritto)
+  if (!fs.existsSync(file)) return null;
   let mod: any;
   try {
     mod = await import(file);
-  } catch (e: any) {
-    if (String(e?.message ?? "").match(/Cannot find|not found|ENOENT/i)) return null;
-    throw new Error("secrets.ts non leggibile (errore di sintassi?)");
+  } catch {
+    throw new Error("secrets.ts non leggibile (errore di sintassi, o importa un file che non c'è?)");
   }
   const s = mod?.secrets as Secrets | undefined;
   if (!s || typeof s !== "object") throw new Error("secrets.ts non esporta `secrets`");

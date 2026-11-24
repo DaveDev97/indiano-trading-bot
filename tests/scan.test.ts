@@ -123,3 +123,34 @@ describe("scansione completa con dati finti", () => {
     rmRoot(ctx.paths);
   });
 });
+
+import { saveParams } from "../src/params/params.ts";
+describe("universo dalle impostazioni", () => {
+  test("borse: con «solo NASDAQ» i titoli NYSE restano fuori; il conteggio delle borse scelte va nella watchlist", async () => {
+    const ctx = makeCtx({ now: "2026-11-21T09:00:00Z" });
+    const base = await runScan(ctx);
+    expect(base.watchlist!.conteggi.ammessi).toBe(33); // i titoli finti sono tutti NYSE; gli ETF (ARCA) sono esclusi
+    expect(base.watchlist!.conteggi.borse).toBe("NYSE e NASDAQ");
+    saveParams(ctx.paths, { "universo.borse": "solo NASDAQ" }, { autore: "utente", versioneAttesa: 1 });
+    const r = await runScan(ctx);
+    expect(r.ok).toBe(true);
+    expect(r.watchlist!.conteggi.ammessi).toBe(0);
+    expect(r.watchlist!.conteggi.valutati).toBe(0);
+    expect(r.watchlist!.acquistabili).toEqual([]);
+    rmRoot(ctx.paths);
+  });
+  test("sede: «solo estere» tiene solo le società fuori dagli USA, «solo USA» le esclude, una sede mancante si esclude", async () => {
+    const ctx = makeCtx({ now: "2026-11-21T09:00:00Z" });
+    const titoli = [...ctx.data.specs.values()].filter((s) => !s.isEtf);
+    titoli[0]!.country = "CA";
+    titoli[1]!.country = "DK";
+    saveParams(ctx.paths, { "universo.sede": "solo estere" }, { autore: "utente", versioneAttesa: 1 });
+    const est = await runScan(ctx);
+    expect(est.watchlist!.conteggi.valutati).toBe(2);
+    expect(est.watchlist!.conteggi.esclusi.sede).toBe(31);
+    saveParams(ctx.paths, { "universo.sede": "solo USA" }, { autore: "utente", versioneAttesa: 2 });
+    const usa = await runScan(ctx);
+    expect(usa.watchlist!.conteggi.valutati).toBe(31);
+    rmRoot(ctx.paths);
+  });
+});

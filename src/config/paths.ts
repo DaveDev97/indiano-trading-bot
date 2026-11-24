@@ -18,6 +18,7 @@ export interface Paths {
   params: string;
   paramsHistory: string;
   watchlist: string;
+  overrideSelezione: string;
   segnali: string;
   piani: string;
   freno: string;
@@ -56,6 +57,7 @@ export function makePaths(root: string): Paths {
     params: path.join(state, "params.json"),
     paramsHistory: path.join(state, "params-history"),
     watchlist: path.join(state, "watchlist.json"),
+    overrideSelezione: path.join(state, "override-selezione.json"),
     segnali: path.join(state, "segnali"),
     piani: path.join(state, "piani-uscita.json"),
     freno: path.join(state, "freno.json"),

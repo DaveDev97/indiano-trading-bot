@@ -1,5 +1,6 @@
-# Segreti
+# Segreti (anche i temporanei e la copia di prima della configurazione guidata)
 secrets.ts
+secrets.ts.*
 .env*
 
 # Dati di esecuzione

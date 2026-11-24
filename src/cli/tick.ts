@@ -3,6 +3,7 @@ import { buildRuntime } from "../run/runtime.ts";
 import { tick } from "../run/tick.ts";
 import { parseArgs } from "../util/args.ts";
 import { errText, redact } from "../util/redact.ts";
+import { NonConfigurato } from "../setup/segreti-file.ts";
 
 const args = parseArgs();
 try {
@@ -10,6 +11,9 @@ try {
   const r = await tick(ctx);
   console.log(redact(r.fatto));
 } catch (e) {
-  console.error(redact(`tick fallito: ${errText(e)}`));
-  process.exitCode = 1;
+  if (e instanceof NonConfigurato) console.log(e.message);
+  else {
+    console.error(redact(`tick fallito: ${errText(e)}`));
+    process.exitCode = 1;
+  }
 }

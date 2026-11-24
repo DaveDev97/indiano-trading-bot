@@ -15,7 +15,8 @@ const PWD = "password-di-prova-123";
 
 async function avvia(ctx = makeCtx({ now: "2026-11-24T15:00:00Z" })) {
   const porta = 20000 + Math.floor(Math.random() * 20000);
-  const d = avviaDashboard(ctx, { password: PWD, porta, pollerMs: null });
+  const scansioni: number[] = [];
+  const d = avviaDashboard(ctx, { password: PWD, porta, pollerMs: null, lanciaScansione: async () => (scansioni.push(Date.now()), { ok: true, messaggio: "Scansione avviata (finta)." }) });
   const base = `http://127.0.0.1:${porta}`;
   const login = async () => {
     const r = await fetch(`${base}/accedi`, { method: "POST", body: new URLSearchParams({ password: PWD }), redirect: "manual", headers: { "content-type": "application/x-www-form-urlencoded" } });
@@ -24,7 +25,7 @@ async function avvia(ctx = makeCtx({ now: "2026-11-24T15:00:00Z" })) {
     const csrf = /name="csrf" value="([a-f0-9]+)"/.exec(page)![1]!;
     return { sid, csrf, cookie: `sid=${sid}` };
   };
-  return { ctx, d, base, login };
+  return { ctx, d, base, login, scansioni };
 }
 
 describe("dashboard: sicurezza (test 12, 47, 11)", () => {
@@ -76,7 +77,7 @@ describe("dashboard: sicurezza (test 12, 47, 11)", () => {
     ctx.broker.faults.down = true;
     const s = await login();
     ctx.log.error("prova", { msg: "errore con PKSEGRETISSIMA99" });
-    for (const p of ["/", "/selezione", "/storico", "/ombra", "/review", "/impostazioni", "/consumi"]) {
+    for (const p of ["/", "/selezione", "/guida", "/storico", "/ombra", "/review", "/impostazioni", "/consumi"]) {
       const t = await (await fetch(`${base}${p}`, { headers: { cookie: s.cookie } })).text();
       expect(t).not.toContain(PWD);
       expect(t).not.toContain("PKSEGRETISSIMA99");
@@ -91,7 +92,7 @@ describe("dashboard: sicurezza (test 12, 47, 11)", () => {
     await eseguiSveglia(sc.ctx, { slot: ap, forzata: false });
     const { d, base, login } = await avvia(sc.ctx);
     const s = await login();
-    for (const p of ["/", "/posizione/AAA", "/selezione", "/selezione/AAA", "/storico", "/ombra", "/review", "/impostazioni", "/consumi", `/log/${ap.id}`]) {
+    for (const p of ["/", "/posizione/AAA", "/selezione", "/selezione/AAA", "/guida", "/storico", "/ombra", "/review", "/impostazioni", "/consumi", `/log/${ap.id}`]) {
       const r = await fetch(`${base}${p}`, { headers: { cookie: s.cookie } });
       expect(r.status).toBe(200);
       const t = await r.text();
@@ -307,6 +308,94 @@ describe("dashboard: selezione dei titoli", () => {
     // titolo fuori selezione: pagina chiara, non un errore
     const fuori = await (await fetch(`${base}/selezione/ZZZZ`, { headers: { cookie: s.cookie } })).text();
     expect(fuori).toContain("non è nella selezione");
+    d.stop();
+    rmRoot(ctx.paths);
+  });
+});
+
+describe("dashboard: guida", () => {
+  test("spiega il bot con i valori dei parametri attivi, e si aggiorna quando cambiano", async () => {
+    const ctx = makeCtx({ now: "2026-11-24T15:00:00Z" });
+    const { d, base, login } = await avvia(ctx);
+    const s = await login();
+    const leggi = async () => (await fetch(`${base}/guida`, { headers: { cookie: s.cookie } })).text();
+    const g = await leggi();
+    for (const t of ["Come funziona il bot", "Quando compra", "Quando vende", "La gabbia", "Come impara", "Limiti da conoscere", 'href="#gabbia"']) expect(g).toContain(t);
+    expect(g).toContain("almeno <b>2 conferme di rottura</b>");
+    saveParams(ctx.paths, { "segnali.confermeMin": 1 }, { autore: "utente", versioneAttesa: loadParams(ctx.paths).params.file.versione });
+    expect(await leggi()).toContain("almeno <b>1 conferma di rottura</b>");
+    d.stop();
+    rmRoot(ctx.paths);
+  });
+});
+
+import { leggiOverride } from "../src/scan/override.ts";
+import { writeJsonAtomic as scrivi } from "../src/util/atomic.ts";
+describe("dashboard: selezione con override, scansione manuale, periodi del grafico", () => {
+  const post = (base: string, s: { cookie: string; csrf: string }, p: string, campi: Record<string, string>) =>
+    fetch(`${base}${p}`, { method: "POST", redirect: "manual", body: new URLSearchParams({ ...campi, csrf: s.csrf }), headers: { cookie: s.cookie, "content-type": "application/x-www-form-urlencoded" } });
+  test("cono, pulsanti di override, aggiungi dalla zona grigia e togli dalla lista; pulsante di scansione", async () => {
+    const ctx = makeCtx({ now: "2026-11-21T09:00:00Z" });
+    expect((await runScan(ctx)).ok).toBe(true);
+    const w = readJsonSafe<Watchlist>(ctx.paths.watchlist);
+    if (!w.ok) throw new Error("watchlist");
+    // un titolo in zona grigia, se la scansione finta non ne ha prodotti
+    if (!w.value.zonaGrigia.length) {
+      const v = w.value.acquistabili.at(-1)!;
+      w.value.acquistabili = w.value.acquistabili.slice(0, -1);
+      w.value.zonaGrigia = [{ simbolo: v.simbolo, nome: v.nome, settore: v.settore, industria: v.industria, profilo: v.profilo, criterioMancato: { id: "x", nome: "ROE", valore: 14, soglia: "> 15", passi: 0.7 }, criteri: v.criteri }];
+      scrivi(ctx.paths.watchlist, w.value);
+    }
+    const grigio = w.value.zonaGrigia[0]!.simbolo;
+    const primo = w.value.acquistabili[0]!.simbolo;
+    const { d, base, login, scansioni } = await avvia(ctx);
+    const s = await login();
+    const el = await (await fetch(`${base}/selezione`, { headers: { cookie: s.cookie } })).text();
+    expect(el).toContain('class="cono"');
+    expect(el).toContain("Lancia la scansione");
+    expect(el).toContain('name="azione" value="aggiungi"');
+    expect(el).toContain('name="azione" value="rimuovi"');
+    expect((await post(base, s, "/azione/selezione", { azione: "aggiungi", simbolo: grigio, torna: "/selezione" })).status).toBe(303);
+    expect((await post(base, s, "/azione/selezione", { azione: "rimuovi", simbolo: primo, torna: `/selezione/${primo}` })).headers.get("location")).toBe(`/selezione/${primo}`);
+    expect(Object.keys(leggiOverride(ctx.paths).aggiunti)).toEqual([grigio]);
+    expect(Object.keys(leggiOverride(ctx.paths).rimossi)).toEqual([primo]);
+    const dopo = await (await fetch(`${base}/selezione`, { headers: { cookie: s.cookie } })).text();
+    expect(dopo).toContain("Tolti a mano");
+    expect(dopo).toContain("aggiunto a mano");
+    // redirect solo dentro /selezione
+    expect((await post(base, s, "/azione/selezione", { azione: "annulla", simbolo: primo, torna: "https://evil.example" })).headers.get("location")).toBe("/selezione");
+    // senza token CSRF niente override
+    const senza = await fetch(`${base}/azione/selezione`, { method: "POST", body: new URLSearchParams({ azione: "rimuovi", simbolo: grigio }), headers: { cookie: s.cookie, "content-type": "application/x-www-form-urlencoded" } });
+    expect(senza.status).toBe(403);
+    expect((await post(base, s, "/azione/scansione", {})).status).toBe(303);
+    expect(scansioni.length).toBe(1);
+    // dettaglio: periodi del grafico
+    for (const p of ["1m", "6m", "1a", "max"]) {
+      const r = await fetch(`${base}/selezione/${grigio}?periodo=${p}`, { headers: { cookie: s.cookie } });
+      expect(r.status).toBe(200);
+      const t = await r.text();
+      expect(t).toContain(`href="/selezione/${grigio}?periodo=${p}" aria-current="true"`);
+      expect(t).toContain('data-bklit="linee"');
+    }
+    d.stop();
+    rmRoot(ctx.paths);
+  });
+  test("universo: l'anteprima mostra l'impatto stimato e senza averla vista il cambio non si salva", async () => {
+    const ctx = makeCtx({ now: "2026-11-21T09:00:00Z" });
+    expect((await runScan(ctx)).ok).toBe(true);
+    const { d, base, login } = await avvia(ctx);
+    const s = await login();
+    const v = loadParams(ctx.paths).params.file.versione;
+    const ant = await (await post(base, s, "/azione/parametri/anteprima", { scheda: "universo", "p:universo.borse": "solo NYSE" })).text();
+    expect(ant).toContain("Impatto stimato del cambio");
+    expect(ant).toContain("Consumo AI:");
+    expect(ant).toContain('name="impattoVisto" value="1"');
+    expect(ant).toContain("data-confirm=\"Confermi il cambio?");
+    const senza = await post(base, s, "/azione/parametri/salva", { scheda: "universo", attesa: String(v), "p:universo.borse": "solo NYSE" });
+    expect(senza.status).toBe(303);
+    expect(loadParams(ctx.paths).params.s("universo.borse")).toBe("NYSE e NASDAQ");
+    await post(base, s, "/azione/parametri/salva", { scheda: "universo", attesa: String(v), "p:universo.borse": "solo NYSE", impattoVisto: "1" });
+    expect(loadParams(ctx.paths).params.s("universo.borse")).toBe("solo NYSE");
     d.stop();
     rmRoot(ctx.paths);
   });

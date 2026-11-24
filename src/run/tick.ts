@@ -2,8 +2,8 @@
 import * as path from "node:path";
 import type { Ctx } from "./context.ts";
 import { loadParams } from "../params/params.ts";
-import { situazione, slotId, slotsDelGiorno, tipoDaNome, type SlotPrevisto } from "./calendario.ts";
-import { eseguiSveglia, leggiStatoSveglie, type EsitoSveglia } from "./sveglia.ts";
+import { daRecuperare, NOME_SVEGLIA, situazione, slotId, slotsDelGiorno, tipoDaNome, type SlotPrevisto } from "./calendario.ts";
+import { eseguiSveglia, leggiStatoSveglie, recuperiBloccati, type EsitoSveglia } from "./sveglia.ts";
 import { runScan } from "../scan/scan.ts";
 import { maybeRunReview } from "../learning/review.ts";
 import { messaggioScan } from "../telegram/messaggi-scan.ts";
@@ -38,7 +38,16 @@ export async function tick(ctx: Ctx, opts: { echo?: boolean } = {}): Promise<{ f
   const st = leggiStatoSveglie(ctx);
   const ultima = st.eseguite.length ? new Date(st.eseguite.map((x) => x.previsto).sort().at(-1)!) : null;
   const sit = situazione(cal, P, now, new Set(st.eseguite.map((x) => x.id)), ultima);
-  if (!sit.dovuta) return { fatto: "nessuna sveglia dovuta" };
+  if (!sit.dovuta) {
+    // bot ripartito dopo l'orario di una sveglia di oggi (PC spento, motore chiuso): si recupera l'ultima utile
+    const forzate = st.eseguite.filter((x) => x.forzata).map((x) => ({ tipo: x.tipo, at: new Date(x.previsto) }));
+    const rec = daRecuperare(cal, P, now, new Set(st.eseguite.map((x) => x.id)), recuperiBloccati(st), forzate);
+    if (!rec) return { fatto: "nessuna sveglia dovuta" };
+    const c = conLogDellaSveglia(ctx, rec.slot.id, opts.echo);
+    c.log.info("recupero di una sveglia saltata", { runId: rec.slot.id, tipo: rec.slot.tipo, motivo: rec.motivo });
+    const esito = await eseguiSveglia(c, { slot: rec.slot, forzata: false, recupero: { motivo: rec.motivo, anche: rec.anche } });
+    return { fatto: `recupero della sveglia ${rec.slot.id} (${NOME_SVEGLIA[rec.slot.tipo]}): ${esito.eseguita ? "eseguita" : esito.motivo}`, esito };
+  }
   const c = conLogDellaSveglia(ctx, sit.dovuta.id, opts.echo);
   const esito = await eseguiSveglia(c, { slot: sit.dovuta, forzata: false });
   return { fatto: `sveglia ${sit.dovuta.id}: ${esito.eseguita ? "eseguita" : esito.motivo}`, esito };
@@ -64,7 +73,8 @@ export async function once(ctx: Ctx, nome: string, force: boolean): Promise<{ ok
   if (prevista && !fatte.has(prevista.id) && now.getTime() >= prevista.at.getTime() && now.getTime() <= prevista.at.getTime() + finestra && !force) slot = prevista;
   else {
     if (prevista && fatte.has(prevista.id) && !force && Math.abs(now.getTime() - prevista.at.getTime()) <= finestra) return { ok: false, messaggio: `la sveglia ${prevista.id} è già stata eseguita: usa --force per rifarla` };
-    slot = { tipo, at: now, id: slotId(now), seduta: day?.date ?? oggi };
+    // suffisso "f": lanciata alle 15:40, una forzata non deve prendere l'id dell'apertura prevista (e i suoi ordini)
+    slot = { tipo, at: now, id: `${slotId(now)}f`, seduta: day?.date ?? oggi };
     forzata = true;
   }
   const c = conLogDellaSveglia(ctx, slot.id);

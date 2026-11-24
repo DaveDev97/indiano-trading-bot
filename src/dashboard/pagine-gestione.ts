@@ -15,6 +15,7 @@ import { html, isola, num, pagina, pct, quota, raw, usd, cls, type Safe } from "
 import { barreImpilate } from "./svg.ts";
 import { aggrega, estremi, filtra, giornoRoma, PERIODI, secchio, spaccatoModello, spaccatoTask, type Grana, type PeriodoId } from "./consumi.ts";
 import { conto } from "./dati.ts";
+import type { Impatto } from "./impatto-universo.ts";
 
 const flashHtml = (m?: { ok: boolean; testo: string } | null) => (m ? html`<div class="${m.ok ? "note" : "alarm"}">${m.testo}</div>` : raw(""));
 
@@ -160,7 +161,7 @@ const TIPI_PER_MODELLO: Record<string, string[]> = {
   "ai.modelloReview": ["review"],
 };
 
-export function paginaImpostazioni(ctx: Ctx, csrf: string, flash?: { ok: boolean; testo: string } | null, anteprima?: { modifiche: Record<string, Valore>; errori: string[] }, schedaRichiesta?: string | null): string {
+export function paginaImpostazioni(ctx: Ctx, csrf: string, flash?: { ok: boolean; testo: string } | null, anteprima?: { modifiche: Record<string, Valore>; errori: string[] }, schedaRichiesta?: string | null, impatto?: Impatto | null): string {
   const P = loadParams(ctx.paths, ctx.now()).params;
   const vals = P.valori();
   const versioni = listVersions(ctx.paths);
@@ -177,11 +178,11 @@ export function paginaImpostazioni(ctx: Ctx, csrf: string, flash?: { ok: boolean
   let ant: Safe = raw("");
   if (anteprima) {
     const ks = Object.keys(anteprima.modifiche);
-    ant = html`<div class="card" style="margin-bottom:18px"><h3>Anteprima delle differenze</h3>
+    ant = html`${impatto ? impatto.html : ""}<div class="card" style="margin-bottom:18px"><h3>Anteprima delle differenze</h3>
 ${anteprima.errori.map((e) => html`<div class="alarm">${e}</div>`)}
 ${ks.length ? html`<div class="scroll"><table><tr><th>Parametro</th><th>Attuale</th><th>Nuovo</th></tr>${ks.map((k) => html`<tr><td>${PARAM_BY_KEY.get(k)!.descrizione}</td><td>${String(vals[k])}</td><td><b>${String(anteprima.modifiche[k])}</b></td></tr>`)}</table></div>
-<form method="post" action="/azione/parametri/salva" style="margin-top:12px"><input type="hidden" name="csrf" value="${csrf}"><input type="hidden" name="attesa" value="${P.file.versione}"><input type="hidden" name="scheda" value="${scheda}">
-${ks.map((k) => html`<input type="hidden" name="p:${k}" value="${String(anteprima.modifiche[k])}">`)}<button class="primary">Conferma e crea la nuova versione</button> <a class="btn" href="/impostazioni?scheda=${scheda}">Annulla</a></form>` : html`<p>Nessuna modifica in questa scheda.</p>`}</div>`;
+<form method="post" action="/azione/parametri/salva" style="margin-top:12px"${impatto ? html` data-confirm="${impatto.conferma}"` : ""}><input type="hidden" name="csrf" value="${csrf}"><input type="hidden" name="attesa" value="${P.file.versione}"><input type="hidden" name="scheda" value="${scheda}">
+${ks.map((k) => html`<input type="hidden" name="p:${k}" value="${String(anteprima.modifiche[k])}">`)}${impatto ? html`<input type="hidden" name="impattoVisto" value="1">` : ""}<button class="primary">Conferma e crea la nuova versione</button> <a class="btn" href="/impostazioni?scheda=${scheda}">Annulla</a></form>` : html`<p>Nessuna modifica in questa scheda.</p>`}</div>`;
   }
   const g = GRUPPI.find((x) => x.id === scheda)!;
   const defs = PARAM_DEFS.filter((d) => d.gruppo === scheda);

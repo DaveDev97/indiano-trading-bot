@@ -160,6 +160,25 @@ details summary{cursor:pointer;color:var(--color-ink-2)}pre{font:400 12.5px/1.5 
 .classifica{list-style:none;margin:0 0 12px;padding:0}
 .passi{margin:0;padding-left:22px}.passi li{padding:6px 0;line-height:1.55}.passi li+li{border-top:1px solid oklch(100% 0 0 / 0.06)}
 details.card>summary{cursor:pointer}
+.cono{display:flex;flex-direction:column;gap:3px}
+.cono-riga{display:grid;grid-template-columns:minmax(140px,44%) minmax(0,1fr);gap:16px;align-items:stretch}
+.cono-forma{filter:drop-shadow(0 6px 16px color-mix(in oklab,var(--color-accent) 22%,transparent))}
+.fetta{height:100%;min-height:60px;display:grid;place-items:center;clip-path:polygon(var(--a) 0,calc(100% - var(--a)) 0,calc(100% - var(--b)) 100%,var(--b) 100%);background:linear-gradient(180deg,color-mix(in oklab,var(--color-accent) var(--p),var(--color-paper-2)),color-mix(in oklab,var(--color-accent-hi) calc(var(--p) + 8%),var(--color-paper-2)));transform-origin:50% 0;animation:cono-in .55s var(--ease-out) both;animation-delay:calc(var(--i) * 90ms)}
+.fetta span{font:600 17px/1 var(--font-display);color:var(--color-ink);font-variant-numeric:tabular-nums;text-shadow:0 1px 6px oklch(0% 0 0 / 0.45)}
+.cono-testo{display:flex;flex-direction:column;justify-content:center;gap:2px;padding:6px 0;font-size:13.5px;color:var(--color-muted);line-height:1.4}.cono-testo b{color:var(--color-ink);font-size:14.5px}
+.cono-quota{color:var(--color-accent-hi);font-size:12.5px;font-weight:500}
+@keyframes cono-in{from{opacity:0;transform:scaleY(.35)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.fetta{animation:none}}
+@media (max-width:560px){.cono-riga{grid-template-columns:42% minmax(0,1fr);gap:10px}.fetta span{font-size:15px}}
+.riga.con-azione{grid-template-columns:40px minmax(0,1fr) auto auto;position:relative}.riga.con-azione:hover{background:oklch(100% 0 0 / 0.035)}
+.riga a.copri{color:inherit;text-decoration:none}.riga a.copri::after{content:"";position:absolute;inset:0}
+.riga .azione{position:relative;z-index:1}
+button.piccolo{min-height:32px;padding:0 14px;font-size:13.5px}
+@media (max-width:560px){.riga.con-azione{grid-template-columns:32px minmax(0,1fr)}.riga.con-azione .n,.riga.con-azione .azione{grid-column:2}}
+.card.scansione{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 20px;margin-top:16px}.card.scansione h3{margin:0 0 4px}.card.scansione p{margin:0}
+.avanzamento{height:6px;border-radius:3px;background:oklch(100% 0 0 / 0.07);margin-top:10px;min-width:220px;overflow:hidden}.avanzamento span{display:block;height:100%;background:var(--color-accent);border-radius:3px}
+.testa-titolo{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 20px}.testa-titolo .azione{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.indice ol{columns:2 260px;margin:0;padding-left:22px}.indice li{padding:3px 0;break-inside:avoid}section.guida{scroll-margin-top:84px}section.guida .card ul{margin:6px 0;padding-left:20px}section.guida .card li{padding:3px 0;line-height:1.55}section.guida .card p{line-height:1.6}
 .legenda-linee{list-style:none;margin:12px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--color-ink-2)}.legenda-linee i{display:inline-block;width:18px;height:0;border-top:2px solid var(--c);margin-right:8px;vertical-align:middle}.legenda-linee i.tratto{border-top-style:dashed}
 .classifica li{display:grid;grid-template-columns:minmax(120px,200px) minmax(0,1fr) 64px 104px;gap:16px;align-items:center;padding:8px 0;border-top:1px solid oklch(100% 0 0 / 0.06)}
 .classifica li:first-child{border-top:0}.classifica .nome{color:var(--color-ink-2)}.classifica li.forte .nome{color:var(--color-ink)}
@@ -182,7 +201,7 @@ var b=f.querySelector('button[type=submit],button:not([type])');if(b){setTimeout
 `;
 
 export function pagina(titolo: string, attiva: string, corpo: Safe, opts: { csrf?: string; stato?: Safe } = {}): string {
-  const voci: [string, string][] = [["/", "Panoramica"], ["/selezione", "Selezione"], ["/storico", "Storico"], ["/ombra", "Ombra"], ["/review", "Review"], ["/impostazioni", "Impostazioni"], ["/consumi", "Consumi AI"]];
+  const voci: [string, string][] = [["/", "Panoramica"], ["/selezione", "Selezione"], ["/storico", "Storico"], ["/ombra", "Ombra"], ["/review", "Review"], ["/impostazioni", "Impostazioni"], ["/consumi", "Consumi AI"], ["/guida", "Guida"]];
   const on = (u: string) => (u === "/" ? attiva === "/" : attiva.startsWith(u));
   return `<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escHtml(titolo)} · Indiano Trading</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/client.css"></head><body>

@@ -13,6 +13,7 @@ import { FakeTelegram, TelegramClient } from "../telegram/client.ts";
 import { createLogger, type Logger } from "../util/log.ts";
 import { realProcessProbe } from "../util/process.ts";
 import { sleep } from "../util/time.ts";
+import { mancantiPerMotore, NonConfigurato } from "../setup/segreti-file.ts";
 import type { Ctx } from "./context.ts";
 
 export interface Runtime {
@@ -36,7 +37,8 @@ export async function buildRuntime(opts: { fake: boolean; logFile?: (paths: Retu
     return { ctx, secrets: null };
   }
   const secrets = await loadSecrets();
-  if (!secrets) throw new Error("secrets.ts non trovato: copia secrets.example.ts in secrets.ts e compila i valori.");
+  const mancano = mancantiPerMotore(secrets);
+  if (mancano.length) throw new NonConfigurato(mancano);
   assertPaperSafety(secrets);
   const paths = makePaths(PROJECT_ROOT);
   const log: Logger = createLogger(opts.logFile?.(paths) ?? null, opts.echo ?? true);

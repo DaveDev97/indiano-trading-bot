@@ -30,11 +30,14 @@ import { aggiornaEsecuzioni, aggiornaSimulazioni, creaOmbre, rilevaUscite, segna
 import { schedeReali, type IngressoScheda } from "../journal/schede.ts";
 import { ultimaReview } from "../learning/archivio.ts";
 import { messaggioAllarmi, messaggioFineSveglia } from "../telegram/messaggi.ts";
+import { applicaOverride, leggiOverride } from "../scan/override.ts";
 import type { Settore } from "../config/settori.ts";
 
 export interface OpzioniSveglia {
   slot: SlotPrevisto;
   forzata: boolean;
+  /** Recupero di una sveglia saltata (il bot è ripartito dopo l'orario). `anche`: le altre saltate di oggi, che non si recuperano più. */
+  recupero?: { motivo: string; anche?: string[] };
 }
 
 export interface Candidato {
@@ -58,8 +61,23 @@ export interface EsitoSveglia {
 }
 
 interface StatoSveglie {
-  eseguite: { id: string; tipo: string; previsto: string; eseguitaIl: string; forzata: boolean }[];
+  eseguite: { id: string; tipo: string; previsto: string; eseguitaIl: string; forzata: boolean; recupero?: boolean }[];
   saltateSegnalate: string[];
+  /** Avvii di un recupero (un id può comparire due volte: il secondo è la ripresa dopo un processo interrotto). */
+  recuperiTentati?: string[];
+  /** Recuperi finiti (bene o male) o rinunciati: non si ritentano più. */
+  recuperiConclusi?: string[];
+}
+
+/**
+ * Sveglie che il recupero non deve più toccare: concluse, oppure già avviate due volte.
+ * Un recupero avviato una volta e mai concluso (processo ucciso a metà) si riprende UNA volta: la sveglia successiva
+ * altrimenti potrebbe trovarsi una posizione appena comprata senza la sua protezione per ore.
+ */
+export function recuperiBloccati(st: StatoSveglie): Set<string> {
+  const n = new Map<string, number>();
+  for (const id of st.recuperiTentati ?? []) n.set(id, (n.get(id) ?? 0) + 1);
+  return new Set([...(st.recuperiConclusi ?? []), ...[...n].filter(([, k]) => k >= 2).map(([id]) => id)]);
 }
 
 export function leggiStatoSveglie(ctx: Ctx): StatoSveglie {
@@ -119,6 +137,11 @@ export async function eseguiSveglia(ctx: Ctx, o: OpzioniSveglia): Promise<EsitoS
   if (!lk.ok) {
     if (lk.reason === "bloccata") {
       const msg = `Sveglia bloccata: la sveglia ${lk.holder?.runId ?? "?"} (PID ${lk.holder?.pid}) è viva ma il suo battito è fermo dal ${lk.holder ? formatRome(lk.holder.heartbeat) : "?"}. Non subentro.`;
+      // un recupero non ha finestra: ritenterebbe a ogni tick, e l'allarme lo mandano già le sveglie previste
+      if (o.recupero) {
+        ctx.log.warn("recupero rimandato: lock bloccato", { holder: lk.holder?.runId });
+        return { ...base, motivo: "bloccata", allarmi: [msg] };
+      }
       await ctx.tg.send(messaggioAllarmi(runId, [msg]));
       return { ...base, motivo: "bloccata", allarmi: [msg] };
     }
@@ -131,6 +154,25 @@ export async function eseguiSveglia(ctx: Ctx, o: OpzioniSveglia): Promise<EsitoS
     if (!o.forzata && leggiStatoSveglie(ctx).eseguite.some((x) => x.id === runId)) {
       ctx.log.info("sveglia già eseguita da un'altra istanza", { runId });
       return { ...base, motivo: "sveglia già eseguita" };
+    }
+    if (o.recupero) {
+      // il tentativo si registra PRIMA del giro e sotto il lock: due motori partiti insieme non recuperano due volte,
+      // e le altre sveglie saltate di oggi diventano concluse (una sola sveglia recuperata per giornata)
+      const st0 = leggiStatoSveglie(ctx);
+      if (recuperiBloccati(st0).has(runId) || st0.eseguite.some((x) => x.id === runId)) return { ...base, motivo: "recupero già tentato" };
+      writeJsonAtomic(ctx.paths.sveglie, {
+        ...st0,
+        recuperiTentati: [...(st0.recuperiTentati ?? []), runId].slice(-200),
+        recuperiConclusi: [...(st0.recuperiConclusi ?? []), ...(o.recupero.anche ?? [])].slice(-200),
+      } satisfies StatoSveglie);
+      try {
+        return await giro(ctx, o, lk.lock, base);
+      } finally {
+        // finito, bene o male (anche con un errore): non si ritenta. Se il processo muore qui dentro, non si arriva a
+        // questa riga e la sveglia dopo lo riprende una volta.
+        const st1 = leggiStatoSveglie(ctx);
+        writeJsonAtomic(ctx.paths.sveglie, { ...st1, recuperiConclusi: [...(st1.recuperiConclusi ?? []), runId].slice(-200) } satisfies StatoSveglie);
+      }
     }
     return await giro(ctx, o, lk.lock, base);
   } catch (e) {
@@ -200,7 +242,8 @@ async function giro(ctx: Ctx, o: OpzioniSveglia, lock: HeldLock, r: EsitoSveglia
   // alla prima sveglia in assoluto (nessuna eseguita, nessun testimone) non c'è niente di saltato
   const primaVolta = st.eseguite.length === 0 && !prev;
   const saltateNuove = primaVolta ? [] : sit.saltate.filter((s) => !st.saltateSegnalate.includes(s.id) && s.id !== runId);
-  if (saltateNuove.length) allarmi.push(`Sveglie saltate: ${saltateNuove.map((s) => `${NOME_SVEGLIA[s.tipo]} delle ${formatRome(s.at).slice(11)} (run ${s.id})`).join(", ")}. Non si recuperano.`);
+  if (saltateNuove.length) allarmi.push(`Sveglie saltate: ${saltateNuove.map((s) => `${NOME_SVEGLIA[s.tipo]} delle ${formatRome(s.at).slice(11)} (run ${s.id})`).join(", ")}. ${o.recupero ? "Si recupera solo l'ultima utile della giornata, una volta." : "Non si recuperano."}`);
+  if (o.recupero) note.unshift(`Recupero della sveglia di ${NOME_SVEGLIA[tipo]} prevista alle ${formatRome(o.slot.at).slice(11)}, eseguita alle ${formatRome(now).slice(11)}: ${o.recupero.motivo}.`);
 
   // stato del conto, freno, pausa acquisti, watchlist
   const freno = await valutaFreno(ctx.paths, ctx.broker, account.equity, P.n("rischio.freno"), now).catch((e) => {
@@ -210,10 +253,13 @@ async function giro(ctx: Ctx, o: OpzioniSveglia, lock: HeldLock, r: EsitoSveglia
   if (freno?.attivo) allarmi.push(`Freno d'emergenza attivo: patrimonio ${account.equity.toFixed(0)} $ sotto il ${(P.n("rischio.freno") * 100).toFixed(0)}% del massimo ${freno.massimo?.toFixed(0)} $. Nessun nuovo acquisto. Si sblocca solo dalla dashboard.`);
   const pausaAcq = readJsonOr<{ attiva: boolean }>(ctx.paths.pausaAcquisti, { attiva: false }).attiva;
   const wlr = readJsonSafe<Watchlist>(ctx.paths.watchlist);
-  const wl = wlr.ok ? wlr.value : null;
+  // override manuali della dashboard: titoli aggiunti dalla zona grigia o tolti dalla lista (gabbia e segnali invariati)
+  const ov = leggiOverride(ctx.paths);
+  const wl = wlr.ok ? applicaOverride(wlr.value, ov).wl : null;
   const etaWl = wl ? giorniTra(wl.generata, now) : null;
   let wlProblema: string | null = null;
-  if (!wl) wlProblema = "watchlist assente: lancia `bun run scan`";
+  if (ov.errore) wlProblema = `${ov.errore}: un titolo tolto a mano potrebbe tornare comprabile`;
+  else if (!wl) wlProblema = "watchlist assente: lancia `bun run scan`";
   else if (etaWl! > P.n("settori.watchlistMaxGiorni")) wlProblema = `watchlist vecchia di ${etaWl} giorni (massimo ${P.n("settori.watchlistMaxGiorni")})`;
   if (wlProblema) allarmi.push(`${wlProblema}: nessun acquisto.`);
 
@@ -522,7 +568,7 @@ async function giro(ctx: Ctx, o: OpzioniSveglia, lock: HeldLock, r: EsitoSveglia
     const ingresso: IngressoScheda = {
       tradeId, simbolo: d.simbolo, nome: c.voce.nome, runId, dataSegnale: sg.data, seduta, profilo: c.voce.profilo, settore: c.voce.settore,
       forzaSettore: fs0 ? { periodo: wl!.forza.periodo, rendimenti: fs0.rendimenti, spy: wl!.forza.spy, forte: fs0.forte } : null,
-      criteri: c.voce.criteri, segnale: sg, punteggio: c.voce.punteggio, posizioneClassifica: c.voce.posizioneGenerale ?? null, motivazione: d.perche,
+      criteri: c.voce.criteri, segnale: sg, punteggio: c.voce.punteggio, posizioneClassifica: c.voce.posizioneGenerale ?? null, motivazione: d.perche, override: c.voce.override ?? null,
       paramsVersione: P.versione, prezzo, quantita: qty, piano: pianoNuovo, modalita, stopPct: P.n("uscita.stopPct"), tpPct: P.n("uscita.takeProfitPct"), trailPct: P.n("uscita.trailingPct"),
       candele: cand.all[d.simbolo] ?? [], candeleSplit: cand.split[d.simbolo] ?? [], ordineId: id,
     };
@@ -606,8 +652,10 @@ async function giro(ctx: Ctx, o: OpzioniSveglia, lock: HeldLock, r: EsitoSveglia
   scriviTestimone(ctx.paths, testimone);
   if (tipo === "briefing") writeJsonAtomic(path.join(ctx.paths.segnali, `${seduta}-lista-briefing.json`), staticiOk);
   writeJsonAtomic(ctx.paths.sveglie, {
-    eseguite: [...st.eseguite.filter((x) => x.id !== runId), { id: runId, tipo, previsto: o.slot.at.toISOString(), eseguitaIl: now.toISOString(), forzata: o.forzata }].slice(-400),
+    eseguite: [...st.eseguite.filter((x) => x.id !== runId), { id: runId, tipo, previsto: o.slot.at.toISOString(), eseguitaIl: now.toISOString(), forzata: o.forzata, ...(o.recupero ? { recupero: true } : {}) }].slice(-400),
     saltateSegnalate: [...st.saltateSegnalate, ...saltateNuove.map((s) => s.id)].slice(-400),
+    recuperiTentati: (st.recuperiTentati ?? []).slice(-200),
+    recuperiConclusi: (st.recuperiConclusi ?? []).slice(-200),
   } satisfies StatoSveglie);
   writeJsonAtomic(ctx.paths.allarmi, { runId, ts: now.toISOString(), allarmi, nonProtette });
 

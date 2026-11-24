@@ -46,14 +46,15 @@ Il motore non ha dipendenze npm. La dashboard usa i grafici di [bklit](https://b
 1. **Scarica il pacchetto** per il tuo sistema e scompattalo in una cartella. I pacchetti si trovano nella scheda *Actions* (artefatti di ogni build) o nelle *Release* su GitHub, oppure li crei con `bun run build`.
    - Windows: `indiano-trading-<versione>-windows.zip`
    - Linux: `indiano-trading-<versione>-linux.tar.gz` (poi `tar -xzf …`)
-2. **Compila i segreti.** Al primo comando lo script crea `secrets.ts` copiando `secrets.example.ts`. Compilalo con:
-   - le chiavi Alpaca **paper**;
-   - il token del bot Telegram e il tuo `chatId`. Per il `chatId`: scrivi `/start` al bot, apri `https://api.telegram.org/bot<TOKEN>/getUpdates` e copia il numero in `"chat":{"id": …}`;
-   - la chiave Finnhub;
-   - una password per la dashboard (almeno 12 caratteri);
-   - il token di `claude setup-token` (consigliato quando il bot parte dalla pianificazione).
+2. **Avvia e segui la configurazione guidata.** Lancia `start avvia`. Al primo avvio non c'è niente da scrivere a mano: nel terminale compare una riga «Configurazione iniziale: apri `http://127.0.0.1:8787/configurazione?codice=…`». Aprila: il link contiene un codice monouso, che impedisce ad altri di configurare il bot al posto tuo. La pagina ti guida passo per passo:
+   1. scegli la **password** della dashboard (almeno 12 caratteri);
+   2. **Alpaca**: crea l'account, passa al conto *Paper* e genera le chiavi (iniziano con `PK`); la pagina le verifica sul conto paper;
+   3. **Finnhub**: registrati e copia la chiave gratuita; la pagina la verifica;
+   4. **Telegram**: crei il bot con **@BotFather** (`/newbot`, nome, username che finisce con `bot`) e incolli il token. Poi premi *Avvia* nella chat con il tuo bot, e la pagina trova da sola la tua chat e ti manda un messaggio di prova. Il passo si può saltare;
+   5. **Claude Code**: la pagina controlla che sia installato e, se vuoi, salva il token di `claude setup-token`;
+   6. **riepilogo** e «Salva e avvia il bot».
 
-   `secrets.ts` non entra mai in git né nei pacchetti.
+   Le chiavi vengono scritte in `secrets.ts`, su quel computer, e la pagina non le rimostra mai. Poi il bot si riavvia da solo e trovi la pagina di accesso. Il motore, nel frattempo, aspetta la configurazione senza andare in errore. `secrets.ts` non entra mai in git né nei pacchetti. Chi preferisce può ancora compilarlo a mano partendo da `secrets.example.ts`. Per rifare la configurazione da zero: chiudi il bot, rinomina `secrets.ts` e rilancia `start avvia`.
 3. **Prova tutto senza chiavi:** `start test`, poi `start once --fake --slot briefing`.
 4. **Sonda reale:** `start probe` verifica Alpaca, Finnhub e il cervello e scrive [docs/campi-dati.md](docs/campi-dati.md).
 5. **Prima scansione:** `start scan` (60–90 minuti la prima volta; poi riprende dalla cache).
@@ -89,14 +90,21 @@ Aggiungi `--fake` a qualsiasi comando per usare broker, dati, cervello e Telegra
 | Metà seduta | 12:30 New York | Protezioni. Ingressi solo se in giornata si è liberato un posto. |
 | Chiusura | chiusura − 30 min | Resoconto, operazioni ombra, simulazioni. |
 
-Una sveglia partita con più di 20 minuti di ritardo è "saltata": si segnala e non si recupera. Weekend e festivi non contano.
+Una sveglia partita con più di 20 minuti di ritardo è "saltata". Se il bot riparte dopo averne saltata qualcuna (PC spento, motore chiuso), al primo tick recupera **una sola** sveglia della giornata, con queste regole:
+
+- a mercato aperto recupera l'apertura, oppure la metà seduta;
+- dopo l'orario della chiusura recupera solo la chiusura, senza acquisti;
+- prima dell'apertura recupera solo il briefing.
+
+Non si torna mai indietro dopo una sveglia già fatta. Se la prossima sveglia prevista è a meno di 30 minuti, il recupero lascia fare a lei. Ogni recupero si tenta una volta sola, e il resoconto su Telegram dice che è un recupero. Weekend e festivi non contano.
 
 ## Dove guardare
 
-- **Telegram**: un messaggio a fine sveglia, gli allarmi ⚠ a parte, la scansione del sabato, la review con i pulsanti Approva/Rifiuta.
+- **Telegram**: un messaggio a fine sveglia (alla chiusura con la distanza di ogni posizione aperta da stop e take profit, in % e in $), gli allarmi ⚠ a parte, la scansione del sabato, la review con i pulsanti Approva/Rifiuta.
 - **Dashboard** (tema Dusk, grafici bklit animati con motion, utilizzabile anche da telefono):
   - *Panoramica*: patrimonio contro SPY e riquadri delle posizioni;
-  - *Selezione*: l'analisi del mercato della scansione: settori contro SPY, i passi dall'universo agli acquistabili, l'elenco con lo stato tecnico di ogni titolo. Ogni titolo si apre con il perché è stato scelto (criterio per criterio, con valori, soglie e percentili), i segnali tecnici e i grafici di prezzo e volume;
+  - *Guida*: come funziona il bot, dalla selezione alle uscite, con i numeri dei parametri attivi;
+  - *Selezione*: l'analisi del mercato della scansione: settori contro SPY, i passi dall'universo agli acquistabili, l'elenco con lo stato tecnico di ogni titolo. Ogni titolo si apre con il perché è stato scelto (criterio per criterio, con valori, soglie e percentili), i segnali tecnici e i grafici di prezzo (1 mese, 6 mesi, 1 anno, tutto lo storico) e volume. Da qui si fanno gli override della lista (aggiungere un titolo della zona grigia, toglierne uno) e si lancia una scansione manuale;
   - *Storico* e *Ombra*: le operazioni ombra sono simulate e sempre separate;
   - *Review*: elenco cliccabile, con il dettaglio di cosa è stato provato e perché; proposte e versioni dei parametri;
   - *Impostazioni*, a schede, con una spiegazione per ogni scheda e la «i» accanto a ogni parametro;
@@ -123,7 +131,26 @@ L'elenco completo è in fondo a [docs/review-codice.md](docs/review-codice.md).
 
 ## Per chi sviluppa
 
-- Bun + TypeScript. Il motore non ha dipendenze; il lato browser della dashboard sì (React, motion, d3, componenti bklit copiati in `src/dashboard/client/bklit/`, licenza MIT).
+- Bun + TypeScript. Il motore non ha dipendenze; il lato browser della dashboard sì (vedi sotto).
+
+### Librerie della grafica
+
+Servono solo alla dashboard nel browser. Sono già compilate in `src/dashboard/assets/client.js` e `client.css`, quindi per usare il bot non vanno installate.
+
+| Libreria | Versione | A cosa serve | Licenza |
+| --- | --- | --- | --- |
+| [bklit](https://bklit.com) (componenti dei grafici) | copiati in `src/dashboard/client/bklit/` | grafici a linee, a barre, impilati e a torta, con tooltip | MIT |
+| [motion](https://motion.dev) | 12.27.0 | animazioni dei grafici e ingresso degli elementi; rispetta "riduci movimento" | MIT |
+| [React](https://react.dev) e react-dom | 19.2.0 | monta i grafici nelle pagine create dal server ("isole") | MIT |
+| [d3-scale](https://d3js.org/d3-scale), [d3-shape](https://d3js.org/d3-shape), [d3-array](https://d3js.org/d3-array) | 4.0.2, 3.2.0, 3.2.4 | scale, curve e calcoli dei grafici bklit | ISC |
+| [@number-flow/react](https://number-flow.barvian.me) | 0.5.11 | numeri animati dei riquadri (patrimonio, cash) | MIT |
+| [@base-ui/react](https://base-ui.com) | 1.1.0 | componenti di base usati da bklit | MIT |
+| [clsx](https://github.com/lukeed/clsx), [tailwind-merge](https://github.com/dcastil/tailwind-merge) | 2.1.1, 2.6.0 | composizione delle classi CSS | MIT |
+| [Tailwind CSS](https://tailwindcss.com) | 4.1.8 | stili dei grafici; solo in fase di compilazione | MIT |
+| [Wix Madefor](https://github.com/wix-incubator/wixmadefor) Display e Text | in `src/dashboard/assets/` | caratteri del tema Dusk, serviti in locale | OFL 1.1 |
+
+Il resto della dashboard (pagine, tabelle, grafico a cono della selezione, grafici di riserva in SVG quando JavaScript non c'è) è HTML e SVG scritti a mano, senza librerie. Niente CDN: tutto è servito da `127.0.0.1`.
+
 - Dopo una modifica ai grafici: `bun install`, poi `bun run client` (ricompila `src/dashboard/assets/client.js` e `client.css`, che vanno nel commit).
 - Test con `bun test`.
 - Struttura in `src/` (config, params, broker, data, scan, signals, cage, run, brain, journal, learning, telegram, dashboard, util).

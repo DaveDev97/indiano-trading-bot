@@ -307,3 +307,46 @@ describe("sveglia: diario e simulazioni", () => {
     rmRoot(sc.ctx.paths);
   });
 });
+
+import { righePosizione } from "../src/telegram/messaggi.ts";
+import type { PianoUscita } from "../src/run/piani.ts";
+describe("resoconto di fine giornata: distanza da stop e take profit", () => {
+  const pos = { symbol: "AAA", qty: 10, qtyAvailable: 0, avgEntryPrice: 100, currentPrice: 110, marketValue: 1100, unrealizedPl: 100, side: "long" as const };
+  const piano = (p: Partial<PianoUscita>): PianoUscita => ({ simbolo: "AAA", tradeId: "T", modalita: "bracket", stop: 90, takeProfit: 120, trailingPct: null, trailPrice: null, massimo: 112, ingresso: 100, quantita: 10, origine: "iniziale", creato: "", aggiornato: "", chiudiAllApertura: null, paramsVersione: "v1", ...p });
+  test("bracket: distanze dal prezzo attuale in % e in $, e percorso tra stop e tp", () => {
+    const r = righePosizione(pos, 110, piano({}), false).join("\n");
+    expect(r).toContain("+10,00% (100 $) dall'ingresso");
+    expect(r).toContain("stop 90,00: −18,18% da qui (−200 $), −10,00% dall'ingresso");
+    expect(r).toContain("take profit 120,00: +9,09% da qui (+100 $)");
+    expect(r).toContain("al 67% del percorso");
+  });
+  test("trailing: stop mobile dal massimo, guadagno garantito, nessun take profit", () => {
+    const r = righePosizione({ ...pos, currentPrice: 130 }, 130, piano({ modalita: "trailing", stop: null, takeProfit: null, trailingPct: 10, massimo: 140 }), false).join("\n");
+    expect(r).toContain("stop mobile 126,00");
+    expect(r).toContain("garantisce +26,00% dall'ingresso");
+    expect(r).toContain("nessun take profit");
+  });
+  test("prezzo già sotto lo stop, piano mancante, prezzo mancante: lo dice invece di inventare", () => {
+    expect(righePosizione(pos, 85, piano({}), false).join("\n")).toContain("prezzo sotto lo stop");
+    expect(righePosizione(pos, 110, undefined, true).join("\n")).toContain("piano di uscita non trovato");
+    expect(righePosizione(pos, 110, undefined, true).join("\n")).toContain("non protetta");
+    expect(righePosizione(pos, null, piano({}), false).join("\n")).toContain("distanze non calcolabili");
+  });
+  test("la sveglia di chiusura elenca sempre le posizioni aperte con le distanze", async () => {
+    const sc = scenario();
+    saveParams(sc.ctx.paths, { "notifiche.posizioniNelResoconto": false }, { autore: "utente", versioneAttesa: loadParams(sc.ctx.paths).params.file.versione });
+    const ap = sc.slot("apertura");
+    sc.setNowAt(ap);
+    await eseguiSveglia(sc.ctx, { slot: ap, forzata: false });
+    expect((await sc.ctx.broker.getPositions()).length).toBeGreaterThan(0);
+    const n = sc.ctx.sent.length;
+    const ch = sc.slot("chiusura");
+    sc.setNowAt(ch);
+    await eseguiSveglia(sc.ctx, { slot: ch, forzata: false });
+    const msg = sc.ctx.sent.slice(n).join("\n");
+    expect(msg).toContain("Posizioni aperte a fine giornata");
+    expect(msg).toContain("da qui");
+    expect(msg).toContain("del percorso");
+    rmRoot(sc.ctx.paths);
+  });
+});

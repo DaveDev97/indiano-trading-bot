@@ -5,6 +5,7 @@ import * as path from "node:path";
 import { PROJECT_ROOT } from "../config/paths.ts";
 import { parseArgs } from "../util/args.ts";
 import { OWN_START_MS } from "../util/process.ts";
+import { CODICE_RIAVVIO } from "../setup/segreti-file.ts";
 import { redact } from "../util/redact.ts";
 import { formatRome } from "../util/time.ts";
 
@@ -18,6 +19,7 @@ interface Figlio {
   script: string;
   proc: ReturnType<typeof Bun.spawn> | null;
   riavvii: number[];
+  richiesti?: number[];
 }
 
 const figli: Figlio[] = [
@@ -58,6 +60,17 @@ function avvia(f: Figlio) {
   void inoltra(f.nome, proc.stderr as ReadableStream<Uint8Array>, true);
   void proc.exited.then((codice) => {
     if (fermando) return;
+    if (codice === CODICE_RIAVVIO) {
+      // riavvio chiesto dal processo stesso (configurazione salvata): subito, ma non all'infinito
+      const adesso = Date.now();
+      f.richiesti = (f.richiesti ?? []).filter((t) => adesso - t < 600_000);
+      if (f.richiesti.length < 5) {
+        f.richiesti.push(adesso);
+        scrivi(f.nome, "riavvio richiesto dopo la configurazione: riparto subito.");
+        avvia(f);
+        return;
+      }
+    }
     const ora = Date.now();
     f.riavvii = f.riavvii.filter((t) => ora - t < 3_600_000);
     if (f.riavvii.length >= MAX_RIAVVII_ORA) {

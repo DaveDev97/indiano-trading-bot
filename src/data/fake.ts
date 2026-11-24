@@ -47,6 +47,8 @@ export interface FakeSymbolSpec {
   /** Trimestrale fra N giorni di calendario (null = data non verificabile). */
   earningsInDays?: number | null;
   isEtf?: boolean;
+  /** Sede della società (campo country di Finnhub); se manca, "US". */
+  country?: string;
 }
 
 const FIRST_DAY = "2024-06-03";
@@ -210,7 +212,7 @@ export class FakeMarket implements MarketData, Fundamentals {
     this.calls.profile++;
     const sp = this.specs.get(symbol);
     if (!sp || sp.isEtf) return null;
-    return { name: sp.name, ticker: sp.symbol, exchange: sp.exchange, finnhubIndustry: sp.industry ?? undefined, marketCapitalization: (sp.metrics.cap as number) ?? undefined };
+    return { name: sp.name, ticker: sp.symbol, exchange: sp.exchange, country: sp.country ?? "US", finnhubIndustry: sp.industry ?? undefined, marketCapitalization: (sp.metrics.cap as number) ?? undefined };
   }
 
   async getEarnings(symbol: string, from: string, to: string): Promise<EarningsItem[] | null> {

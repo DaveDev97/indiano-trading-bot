@@ -22,25 +22,41 @@ cmd="${1:-aiuto}"
 
 vuole_finto=0
 for a in "$@"; do [[ "$a" == "--fake" ]] && vuole_finto=1; done
-if [[ ! -f secrets.ts && "$cmd" != "aiuto" && "$cmd" != "test" && $vuole_finto -eq 0 ]]; then
-  cp secrets.example.ts secrets.ts
-  echo "Ho creato secrets.ts dal modello: compilalo (chiavi Alpaca PAPER, Telegram, Finnhub, password della dashboard) e rilancia." >&2
-  echo "Per provare senza chiavi aggiungi --fake (broker, dati e cervello finti)." >&2
-  exit 1
-fi
+# Primo avvio: niente da compilare a mano. "avvia" (o "dashboard") apre la configurazione guidata nel browser.
+case "$cmd" in
+  tick|once|scan|review|status|probe)
+    if [[ ! -f secrets.ts && $vuole_finto -eq 0 ]]; then
+      echo "Il bot non è ancora configurato. Lancia  ./start.sh avvia  e apri il link della configurazione guidata che compare nel terminale." >&2
+      echo "Per provare senza chiavi aggiungi --fake (broker, dati e cervello finti)." >&2
+      exit 1
+    fi ;;
+esac
+# 75 = il processo chiede di essere riavviato (configurazione appena salvata)
+RIAVVIO=75
+riavviabile() {
+  local codice
+  while true; do
+    set +e
+    "$BUN" run "$@"
+    codice=$?
+    set -e
+    [[ $codice -eq $RIAVVIO ]] || return $codice
+  done
+}
 
 case "$cmd" in
   aiuto|help|-h|--help)
     echo "Indiano Trading Bot - bun $("$BUN" --version)"
     command -v claude >/dev/null && echo "claude: $(claude --version 2>/dev/null)" || echo "claude: NON trovato (serve al cervello: https://claude.ai/install.sh)"
-    [[ -f secrets.ts ]] && echo "secrets.ts: presente" || echo "secrets.ts: assente (verrà creato dal modello al primo comando)"
+    [[ -f secrets.ts ]] && echo "secrets.ts: presente" || echo "secrets.ts: assente (al primo ./start.sh avvia la dashboard ti guida nella configurazione)"
     sed -n '3,9p' "$0" | sed 's/^# \{0,1\}//'
     ;;
   installa) exec ./scripts/installa-pianificazione.sh ;;
   disinstalla) exec ./scripts/installa-pianificazione.sh --rimuovi ;;
   avvia) exec "$BUN" run avvia "$@" ;;
-  motore) exec "$BUN" run schedule "$@" ;;
+  motore) riavviabile schedule "$@" ;;
+  dashboard) riavviabile dashboard "$@" ;;
   test) exec "$BUN" test "$@" ;;
-  dashboard|tick|once|scan|review|status|probe|schedule|build) exec "$BUN" run "$cmd" "$@" ;;
+  tick|once|scan|review|status|probe|schedule|build) exec "$BUN" run "$cmd" "$@" ;;
   *) echo "Comando sconosciuto: $cmd (./start.sh aiuto)" >&2; exit 1 ;;
 esac

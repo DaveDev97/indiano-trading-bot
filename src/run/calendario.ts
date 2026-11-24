@@ -64,6 +64,66 @@ export function situazione(calendar: CalendarDay[], P: Params, now: Date, esegui
   return { dovuta, saltate, prossima };
 }
 
+export interface Recupero {
+  slot: SlotPrevisto;
+  /** Perché si recupera proprio questa (in italiano, per il resoconto). */
+  motivo: string;
+  /** Le altre sveglie saltate di oggi: con questo recupero non si recuperano più (una sola sveglia per giornata). */
+  anche: string[];
+}
+
+/** Sveglia lanciata a mano fuori orario oggi: vale come fatta per il suo tipo. */
+export interface Forzata {
+  tipo: TipoSveglia | string;
+  at: Date;
+}
+
+/**
+ * Sveglia di OGGI (seduta di New York) da recuperare adesso, quando il bot riparte dopo averne saltata qualcuna
+ * (PC spento o motore chiuso). Regole prudenti, una sola sveglia per volta:
+ * - solo sveglie la cui finestra è passata, mai eseguite, mai già tentate in recupero;
+ * - solo se dopo non ne è stata eseguita un'altra della stessa seduta (la giornata è andata avanti: non si torna indietro);
+ * - dall'orario della chiusura in poi si recupera solo la chiusura (resoconto, nessun acquisto);
+ * - a mercato aperto l'apertura (uscite e ingressi), altrimenti la metà seduta;
+ * - prima dell'apertura solo il briefing (nessun ordine); a mercato aperto il briefing non serve più;
+ * - se la prossima sveglia prevista è a meno di `orari.distanzaMinima` minuti, si lascia fare a lei.
+ */
+export function daRecuperare(calendar: CalendarDay[], P: Params, now: Date, eseguite: Set<string>, tentati: Set<string>, forzateOggi: Forzata[] = []): Recupero | null {
+  const t = now.getTime();
+  const finestra = P.n("orari.finestraMinuti") * 60_000;
+  const day = calendar.find((d) => d.date === dateInTz(now, TZ_NY));
+  if (!day) return null;
+  const slots = slotsDelGiorno(day, P);
+  // una sveglia lanciata a mano oggi (once, anche fuori orario) vale come fatta per il suo tipo
+  const fatta = (s: SlotPrevisto) => eseguite.has(s.id) || forzateOggi.some((f) => f.tipo === s.tipo && dateInTz(f.at, TZ_NY) === day.date);
+  const ultimaFatta = Math.max(-Infinity, ...slots.filter(fatta).map((s) => s.at.getTime()));
+  const passate = slots.filter((s) => s.at.getTime() + finestra < t && !fatta(s));
+  const saltate = passate.filter((s) => !tentati.has(s.id) && s.at.getTime() > ultimaFatta);
+  if (!saltate.length) return null;
+  const conAnche = (r: { slot: SlotPrevisto; motivo: string }): Recupero => ({ ...r, anche: passate.map((s) => s.id).filter((id) => id !== r.slot.id) });
+  const prossima = calendar.flatMap((d) => slotsDelGiorno(d, P)).filter((s) => s.at.getTime() > t).sort((a, b) => a.at.getTime() - b.at.getTime())[0];
+  if (prossima && prossima.at.getTime() - t < P.n("orari.distanzaMinima") * 60_000) return null;
+  const apre = zonedToUtc(day.date, day.open, TZ_NY).getTime();
+  const chiude = zonedToUtc(day.date, day.close, TZ_NY).getTime();
+  const chiusura = slots.find((s) => s.tipo === "chiusura");
+  const di = (tipo: TipoSveglia) => saltate.find((s) => s.tipo === tipo);
+  if (chiusura && t >= chiusura.at.getTime()) {
+    const c = di("chiusura");
+    return c ? conAnche({ slot: c, motivo: "è passato l'orario della chiusura: si recupera solo il resoconto della giornata, senza acquisti" }) : null;
+  }
+  if (t >= apre && t < chiude) {
+    const a = di("apertura");
+    if (a) return conAnche({ slot: a, motivo: "mercato aperto: si recuperano le uscite e gli ingressi dell'apertura, con i prezzi di adesso" });
+    const m = di("meta");
+    return m ? conAnche({ slot: m, motivo: "mercato aperto: si recupera la sveglia di metà seduta" }) : null;
+  }
+  if (t < apre) {
+    const b = di("briefing");
+    return b ? conAnche({ slot: b, motivo: "mercato non ancora aperto: si recupera il briefing (controlli e piano del giorno, nessun ordine)" }) : null;
+  }
+  return null;
+}
+
 export function tipoDaNome(nome: string): TipoSveglia | null {
   const n = nome.toLowerCase().replace(/[^a-z]/g, "");
   if (n === "briefing") return "briefing";

@@ -24,7 +24,8 @@ export type TipoEvento =
   | "scheda-candele"
   | "scheda-trimestrale"
   | "scheda-manuale"
-  | "scansione";
+  | "scansione"
+  | "override-selezione";
 
 export interface EventoDiario {
   ts: string;

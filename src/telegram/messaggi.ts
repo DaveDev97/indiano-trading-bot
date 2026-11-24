@@ -2,7 +2,7 @@
 import type { Account, Position } from "../broker/types.ts";
 import type { Params } from "../params/params.ts";
 import type { Rifiuto, TipoSveglia } from "../cage/gabbia.ts";
-import type { Piani } from "../run/piani.ts";
+import type { Piani, PianoUscita } from "../run/piani.ts";
 import { livelloStop } from "../run/piani.ts";
 import type { SlotPrevisto } from "../run/calendario.ts";
 import { NOME_SVEGLIA } from "../run/calendario.ts";
@@ -60,18 +60,12 @@ export function messaggioFineSveglia(d: DatiMessaggio): string {
   }
   L.push("");
   L.push(`<b>Motivazione</b>: ${d.cervelloOk ? esc(dueRighe(d.ragionamento)) : `cervello non disponibile (${esc(d.cervelloMotivo ?? "")}): nessun acquisto.`}`);
-  if (d.P.b("notifiche.posizioniNelResoconto") && d.posizioni.length) {
+  // a fine giornata le posizioni ci sono sempre, con la distanza da stop e take profit; nelle altre sveglie se richiesto
+  const fineGiornata = d.tipo === "chiusura";
+  if (d.posizioni.length && (fineGiornata || d.P.b("notifiche.posizioniNelResoconto"))) {
     L.push("");
-    L.push("<b>Posizioni</b>:");
-    for (const p of d.posizioni) {
-      const pr = d.prezzi[p.symbol] ?? p.currentPrice;
-      const pnl = pr ? pr / p.avgEntryPrice - 1 : null;
-      const usd = pr ? (pr - p.avgEntryPrice) * p.qty : null;
-      const pl = d.piani[p.symbol];
-      const lv = pl ? livelloStop(pl) : null;
-      const prot = d.nonProtette.includes(p.symbol) ? " ⚠ <b>non protetta</b>" : "";
-      L.push(`• ${esc(p.symbol)} ${fmtPct(pnl)} (${fmtUsd(usd, 0)}) · stop ${fmtNum(lv)}${pl?.takeProfit ? ` · tp ${fmtNum(pl.takeProfit)}` : pl?.modalita === "trailing" ? " · stop mobile" : ""}${prot}`);
-    }
+    L.push(fineGiornata ? `<b>Posizioni aperte a fine giornata</b> (${d.posizioni.length}), distanza da stop e take profit al prezzo attuale:` : "<b>Posizioni</b>:");
+    for (const p of d.posizioni) L.push(...righePosizione(p, d.prezzi[p.symbol] ?? p.currentPrice ?? null, d.piani[p.symbol], d.nonProtette.includes(p.symbol)));
   }
   L.push("");
   const giorno = d.account.lastEquity ? d.account.equity / d.account.lastEquity - 1 : null;
@@ -83,6 +77,37 @@ export function messaggioFineSveglia(d: DatiMessaggio): string {
     for (const n of d.note.slice(0, 8)) L.push(`<i>${esc(n)}</i>`);
   }
   return L.join("\n");
+}
+
+/** Una posizione: risultato dall'ingresso e distanza dai livelli di uscita, in % e in $ dal prezzo attuale. */
+export function righePosizione(p: Position, pr: number | null, pl: PianoUscita | undefined, nonProtetta: boolean): string[] {
+  const ing = p.avgEntryPrice;
+  const qty = p.qty;
+  const risultato = pr ? `${fmtPct(pr / ing - 1)} (${fmtUsd((pr - ing) * qty, 0)})` : "n/d";
+  const testa = `• <b>${esc(p.symbol)}</b> ${fmtNum(qty, 0)} az. · ${pr ? fmtUsd(pr) : "prezzo n/d"} · ${risultato} dall'ingresso a ${fmtUsd(ing)}${nonProtetta ? " ⚠ <b>non protetta</b>" : ""}`;
+  if (!pl) return [testa, "   piano di uscita non trovato: la prossima sveglia ricostruisce la protezione"];
+  if (!pr) return [testa, "   prezzo attuale non disponibile: distanze non calcolabili"];
+  const out = [testa];
+  const stop = livelloStop(pl);
+  const tp = pl.modalita === "bracket" ? pl.takeProfit : null;
+  if (stop === null) out.push("   stop non noto");
+  else if (pr <= stop) out.push(`   ⚠ prezzo sotto lo stop ${fmtNum(stop)}: se la protezione non è scattata, si vende alla prossima sveglia a mercato aperto`);
+  else {
+    const daIng = stop / ing - 1;
+    out.push(`   ↓ ${pl.modalita === "trailing" ? "stop mobile" : "stop"} ${fmtNum(stop)}: ${fmtPct(stop / pr - 1)} da qui (${fmtUsd((stop - pr) * qty, 0)}), ${daIng >= 0 ? `garantisce ${fmtPct(daIng)} dall'ingresso` : `${fmtPct(daIng)} dall'ingresso`}`);
+  }
+  if (tp !== null) {
+    if (pr >= tp) out.push(`   ↑ prezzo oltre il take profit ${fmtNum(tp)}: l'ordine limite dovrebbe eseguirsi`);
+    else out.push(`   ↑ take profit ${fmtNum(tp)}: ${fmtPct(tp / pr - 1)} da qui (+${fmtUsd((tp - pr) * qty, 0)})`);
+    if (stop !== null && tp > stop) {
+      const f = Math.min(1, Math.max(0, (pr - stop) / (tp - stop)));
+      const n = Math.round(f * 10);
+      out.push(`   stop ${"▰".repeat(n)}${"▱".repeat(10 - n)} tp · al ${Math.round(f * 100)}% del percorso`);
+    }
+  } else if (pl.modalita === "trailing") {
+    out.push(`   nessun take profit: lo stop mobile segue il massimo raggiunto (${fmtNum(pl.massimo)}) a ${pl.trailingPct != null ? `${fmtNum(pl.trailingPct, 0)}%` : fmtUsd(pl.trailPrice)}`);
+  }
+  return out;
 }
 
 export function messaggioAllarmi(runId: string, allarmi: string[]): string {

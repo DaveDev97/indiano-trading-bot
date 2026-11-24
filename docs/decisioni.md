@@ -182,3 +182,76 @@ Formato: data — dubbio — scelta — motivo. Si sceglie sempre l'opzione più
     - Il dettaglio di un titolo spiega ogni passo della selezione con i valori veri (filtri dell'universo, forza del settore, criteri del profilo con soglie ed esiti, percentili e classifica), poi i segnali tecnici e i grafici di prezzo e volume.
     - I segnali sono quelli della seduta salvata, cioè gli stessi che usa la sveglia. Se il titolo non è tra quelli calcolati, si ricalcolano sul momento sulle candele chiuse, con i parametri attivi e una cache di 15 minuti. La pagina dice sempre da dove vengono i dati.
     - Il grafico del prezzo mostra la variazione rispetto all'ultima chiusura: bklit fa partire l'asse da zero, e così lo zero è il prezzo di oggi.
+
+39. **Resoconto di fine giornata con la distanza da stop e take profit** (24/11/2026, richiesta dell'utente).
+    - Alla sveglia di chiusura le posizioni aperte compaiono sempre, anche se "posizioni nel resoconto" è spento: è la richiesta esplicita. Nelle altre sveglie decide quel parametro.
+    - Per ogni posizione:
+      - risultato dall'ingresso;
+      - distanza dallo stop (o dallo stop mobile) e dal take profit, in % e in $ dal prezzo attuale;
+      - posizione nel percorso tra stop e take profit.
+    - Casi limite dichiarati e non inventati: prezzo già oltre lo stop o il take profit, piano di uscita mancante, prezzo non disponibile.
+
+40. **Pagina "Guida"** (24/11/2026, richiesta dell'utente). Spiega il bot dalla selezione alle uscite. I numeri vengono dai parametri attivi, così la guida non diventa falsa dopo una modifica. È solo testo, senza azioni.
+
+41. **Universo nelle impostazioni** (24/11/2026, richiesta dell'utente). Due parametri nuovi nel gruppo Universo:
+    - `universo.borse`: NYSE e NASDAQ (iniziale, come prima), con NYSE American, solo NYSE, solo NASDAQ. Alpaca negozia solo titoli quotati in USA, quindi l'universo non può andare oltre le borse americane. NYSE Arca, Cboe e OTC restano fuori: sono soprattutto ETF o titoli poco liquidi;
+    - `universo.sede`: tutte (iniziale, come prima), solo USA, solo estere, dal campo `country` del profilo Finnhub. Se la sede manca e c'è un filtro, il titolo si esclude: è la scelta prudente.
+
+    I valori iniziali riproducono il comportamento di prima, quindi nulla cambia finché non li tocchi. La cache del prefiltro ora è legata alle borse: cambiandole a metà giornata non si riusa una cache sbagliata.
+
+42. **Stima dell'impatto prima di salvare** un cambio dell'universo, di `settori.migliori`, di `settori.maxAcquistabili` o di `ai.maxCandidati`.
+    - Calcolata al momento con i dati veri: elenco titoli di Alpaca, cache del prefiltro e di Finnhub, watchlist, registro dei consumi AI.
+    - Consumo AI: il cervello riceve al massimo `ai.maxCandidati` candidati, quindi la stima è il caso peggiore. È la differenza dei candidati massimi × byte di un candidato (misurati sulla watchlist) × costo per byte delle ultime chiamate di decisione × 42 sveglie al mese. Spesso è "invariato": gli acquistabili sono al massimo 3 per settore forte, qualunque sia l'universo.
+    - Borse mai scansionate (es. NYSE American): stimate con la quota di titoli liquidi delle altre, e segnate come stima.
+    - La conferma è chiesta due volte: una finestra di conferma con i numeri, e un controllo nel server, che rifiuta il salvataggio se l'anteprima con la stima non è stata vista.
+
+43. **Override della lista** (richiesta dell'utente; cambia una regola del contratto per scelta esplicita dell'utente).
+    - Si può *aggiungere* un titolo della zona grigia, cioè uno che ha mancato un solo criterio di bilancio di poco, oppure *togliere* un acquistabile.
+    - Scelte prudenti:
+      - un override cambia solo la lista: per comprare servono comunque il segnale tecnico, un settore forte e il via libera della gabbia;
+      - un aggiunto vale finché il titolo è in zona grigia; dopo una scansione in cui non lo è più resta "sospeso";
+      - un tolto vale anche per le scansioni successive, finché non lo annulli;
+      - una posizione già aperta su un titolo tolto resta protetta e segue le sue uscite.
+    - Le operazioni nate da un aggiunto a mano hanno `override: "aggiunto"` nella scheda. La review le conta a parte (`perSelezione`), così non si attribuisce alla classifica un risultato che non è suo.
+    - Ogni azione va nel diario e su Telegram.
+
+44. **Scansione manuale dalla dashboard.**
+    - Lancia `bun run scan` come processo separato, così continua anche se la pagina si chiude, e la pagina mostra l'avanzamento.
+    - Il lock della scansione impedisce due scansioni insieme.
+    - La conferma avverte di un rischio: durante la scansione le richieste a Finnhub arrivano vicino al limite, e una sveglia che parte nel frattempo potrebbe non verificare le trimestrali. In quel caso non compra, che è l'esito prudente.
+
+45. **Grafico del titolo a periodi** (1 mese, 6 mesi, 1 anno, Max).
+    - Le candele salvate (300) bastano solo per 1 mese con la SMA200. Per gli altri periodi si scaricano da Alpaca, aggiustate per i dividendi, con una cache di 30 minuti.
+    - Max parte dal 2016, e oltre 600 punti mostra una seduta ogni N.
+    - La finestra parte dove la SMA200 esiste già, così le medie si vedono su tutto il periodo.
+
+46. **Grafico a cono** per i passaggi della scansione: HTML e CSS (clip-path), senza librerie, con animazione d'ingresso disattivata da "riduci movimento".
+
+47. **Recupero delle sveglie saltate** (24/11/2026, richiesta dell'utente; cambia §5 del contratto, che diceva "non si recupera").
+    - Se il bot riparte dopo l'orario di una sveglia di oggi (PC spento, motore chiuso), al primo tick ne recupera una sola, con lo stesso id della sveglia prevista: non si confonde con le sveglie forzate e non si può fare due volte.
+    - Regole prudenti:
+      - dopo l'orario della chiusura solo la chiusura, quindi nessun acquisto;
+      - a mercato aperto l'apertura (che fa anche le uscite), altrimenti la metà seduta;
+      - prima dell'apertura solo il briefing;
+      - mai una sveglia precedente a una già eseguita oggi;
+      - niente recupero se la prossima sveglia prevista è a meno di `orari.distanzaMinima`.
+    - Il tentativo si registra sotto il lock prima del giro (`recuperiTentati` in `state/sveglie.json`). Se il recupero fallisce non si ritenta a ogni tick, e due motori avviati insieme non recuperano due volte.
+    - Il controllo del prezzo all'acquisto (scostamento massimo in ATR dalla chiusura precedente) vale anche nel recupero: un titolo già scappato non si compra.
+    - Si recupera solo la seduta di New York in corso, mai i giorni precedenti.
+
+48. **Configurazione guidata al primo avvio** (24/11/2026, richiesta dell'utente). Se `secrets.ts` manca o è incompleto, la dashboard parte in modalità configurazione e il motore aspetta, senza andare in errore.
+    - **Sicurezza:**
+      - solo 127.0.0.1, con controllo dell'host e dell'origine e token CSRF;
+      - un codice monouso stampato nel terminale e nel log della dashboard, con blocco dopo 10 codici sbagliati;
+      - le chiavi non tornano mai al browser, e ogni valore è registrato per `redact()` prima di qualsiasi chiamata;
+      - la chiave Alpaca live (AK) è rifiutata senza chiamare la rete, e la verifica usa solo l'endpoint paper.
+    - **Verifiche, tutte in sola lettura:** `/v2/account` di Alpaca paper, `profile2` di Finnhub, `getMe` e `getUpdates` di Telegram (che trova la chat privata) con un messaggio di prova, `claude --version`.
+    - **Scrittura:** `secrets.ts` scritto in modo atomico, con i valori passati da JSON.stringify e U+2028/2029 con la sequenza di escape. Su Linux il permesso è 600.
+    - **Riavvio:** a fine configurazione il processo esce con il codice 75. `start avvia` lo riavvia subito, al massimo 5 volte in 10 minuti; `start dashboard` e `start motore` lo rilanciano finché esce con 75.
+    - **File esistenti:** un `secrets.ts` scritto a mano ma illeggibile non si sovrascrive mai: il bot si ferma e lo dice. Telegram e il token di Claude sono facoltativi.
+
+49. **Esito della revisione esterna** (dettagli in `docs/review-codice.md`).
+    - Un recupero interrotto da un processo ucciso si riprende **una** volta. È l'unico caso in cui un recupero si ritenta: serve a non lasciare una posizione senza protezione fino alla sveglia dopo.
+    - Le sveglie forzate (`once` fuori orario) hanno id con il suffisso `f`, e contano come fatte per il recupero.
+    - Un file degli override illeggibile blocca gli acquisti.
+    - Il motore si riavvia quando `secrets.ts` cambia.

@@ -23,27 +23,30 @@ $cmd = if ($args.Count -gt 0) { [string]$args[0] } else { "aiuto" }
 # sempre una lista: con un solo argomento PowerShell darebbe una stringa, e @resto la spezzerebbe in caratteri
 $resto = @($args | Select-Object -Skip 1)
 
-if (-not (Test-Path "secrets.ts") -and $cmd -notin @("aiuto", "help", "test") -and -not ($resto -contains "--fake")) {
-    Copy-Item "secrets.example.ts" "secrets.ts"
-    Write-Host "Ho creato secrets.ts dal modello: compilalo (chiavi Alpaca PAPER, Telegram, Finnhub, password della dashboard) e rilancia." -ForegroundColor Yellow
+# Primo avvio: niente da compilare a mano. "avvia" (o "dashboard") apre la configurazione guidata nel browser.
+if (-not (Test-Path "secrets.ts") -and $cmd -in @("tick", "once", "scan", "review", "status", "probe") -and -not ($resto -contains "--fake")) {
+    Write-Host "Il bot non e' ancora configurato. Lancia  .\start.ps1 avvia  e apri il link della configurazione guidata che compare nel terminale." -ForegroundColor Yellow
     Write-Host "Per provare senza chiavi aggiungi --fake (broker, dati e cervello finti)."
     exit 1
 }
+# 75 = il processo chiede di essere riavviato (configurazione appena salvata)
+$RIAVVIO = 75
 
 switch ($cmd) {
     { $_ -in @("aiuto", "help") } {
         Write-Host "Indiano Trading Bot - bun $(& $bun --version)"
         $c = Get-Command claude -ErrorAction SilentlyContinue
         if ($c) { Write-Host "claude: $(& $c.Source --version)" } else { Write-Host "claude: NON trovato (serve al cervello: irm https://claude.ai/install.ps1 | iex)" }
-        Write-Host ("secrets.ts: " + $(if (Test-Path "secrets.ts") { "presente" } else { "assente (verrà creato dal modello al primo comando)" }))
+        Write-Host ("secrets.ts: " + $(if (Test-Path "secrets.ts") { "presente" } else { "assente: al primo .\start.ps1 avvia la dashboard ti guida nella configurazione" }))
         Write-Host "Comandi: avvia, installa, disinstalla, motore, dashboard, tick, once, scan, review, status, probe, test, build"
         exit 0
     }
     "installa" { & powershell -ExecutionPolicy Bypass -File ".\scripts\installa-pianificazione.ps1"; exit $LASTEXITCODE }
     "disinstalla" { & powershell -ExecutionPolicy Bypass -File ".\scripts\installa-pianificazione.ps1" -Rimuovi; exit $LASTEXITCODE }
     "avvia" { & $bun run avvia @resto; exit $LASTEXITCODE }
-    "motore" { & $bun run schedule @resto; exit $LASTEXITCODE }
+    "motore" { do { & $bun run schedule @resto } while ($LASTEXITCODE -eq $RIAVVIO); exit $LASTEXITCODE }
+    "dashboard" { do { & $bun run dashboard @resto } while ($LASTEXITCODE -eq $RIAVVIO); exit $LASTEXITCODE }
     "test" { & $bun test @resto; exit $LASTEXITCODE }
-    { $_ -in @("dashboard", "tick", "once", "scan", "review", "status", "probe", "schedule", "build") } { & $bun run $cmd @resto; exit $LASTEXITCODE }
+    { $_ -in @("tick", "once", "scan", "review", "status", "probe", "schedule", "build") } { & $bun run $cmd @resto; exit $LASTEXITCODE }
     default { Write-Host "Comando sconosciuto: $cmd (.\start.ps1 aiuto)" -ForegroundColor Red; exit 1 }
 }

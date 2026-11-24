@@ -32,25 +32,29 @@ const FORMATI: Record<Formato, (v: number) => string> = {
   numero: (v) => nf({ maximumFractionDigits: 0 }).format(v),
 };
 const fmt = (f: Formato | undefined, v: unknown) => (typeof v === "number" && Number.isFinite(v) ? FORMATI[f ?? "numero"](v) : "n/d");
-const dataIt = (d: string) => new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${d}T12:00:00Z`));
+const dataIt = (d: string, anno = false) => new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "short", ...(anno ? { year: "numeric" } : {}), timeZone: "UTC" }).format(new Date(`${d}T12:00:00Z`));
+const meseAnno = (d: string) => new Intl.DateTimeFormat("it-IT", { month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${d}T12:00:00Z`));
 
 interface PropsLinee {
   serie: { chiave: string; nome: string; colore: string; tratteggiata?: boolean }[];
   punti: Record<string, number | string | null>[];
   formato?: Formato;
   rapporto?: string;
+  /** Periodi lunghi: l'asse mostra mese e anno, il tooltip la data con l'anno. */
+  conAnno?: boolean;
 }
 
 function Linee(p: PropsLinee): ReactNode {
   const data = p.punti.map((r) => ({ ...r, date: new Date(`${r.data}T12:00:00Z`) }));
-  const etichette = p.punti.map((r) => dataIt(String(r.data)));
+  const asse = p.punti.map((r) => (p.conAnno ? meseAnno(String(r.data)) : dataIt(String(r.data))));
+  const etichette = p.punti.map((r) => dataIt(String(r.data), p.conAnno));
   return (
-    <LineChart data={data} aspectRatio={p.rapporto ?? "16 / 9"} margin={{ left: 46, right: 12, top: 12, bottom: 28 }}>
+    <LineChart data={data} aspectRatio={p.rapporto ?? "16 / 9"} margin={{ left: 58, right: 12, top: 12, bottom: 28 }}>
       <Grid horizontal />
       {p.serie.map((s) => (
         <Line key={s.chiave} dataKey={s.chiave} stroke={s.colore} strokeWidth={s.tratteggiata ? 1.5 : 2.25} dashFromIndex={s.tratteggiata ? 0 : undefined} curve={curveMonotoneX} />
       ))}
-      <XAxis numTicks={4} labels={etichette} />
+      <XAxis numTicks={4} labels={asse} />
       <YAxis numTicks={4} formatValue={(v) => fmt(p.formato, v)} />
       <ChartTooltip
         dateLabels={etichette}

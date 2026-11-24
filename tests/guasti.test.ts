@@ -262,16 +262,23 @@ describe("guasti", () => {
     aggiornaPiani(sc.ctx.paths, (p) => (p.ZZZ = { simbolo: "ZZZ", tradeId: "T-z", modalita: "bracket", stop: 45, takeProfit: 60, trailingPct: null, trailPrice: null, massimo: 51, ingresso: 50, quantita: 10, origine: "iniziale", creato: sc.ctx.now().toISOString(), aggiornato: sc.ctx.now().toISOString(), chiudiAllApertura: null, paramsVersione: "v1" }));
     return sc.ctx.broker.createdOrders().length;
   }
-  test("6a. orologio, solo pianificatore: il tick delle 22:05 non recupera la chiusura; il briefing dopo la segnala saltata", async () => {
+  // Dal 24/11/2026 (decisione 47, richiesta dell'utente) una sveglia saltata di oggi si recupera: qui la chiusura.
+  // L'invariante del guasto resta lo stesso: a mercato chiuso nessun ordine a mercato, e la posizione resta.
+  test("6a. orologio, solo pianificatore: il tick delle 22:05 recupera la chiusura senza ordini a mercato chiuso", async () => {
     const sc = giornata6();
     const prima = await primaParte(sc);
     sc.ctx.setNow("2026-11-24T21:05:00Z"); // 22:05 Roma = 16:05 New York: mercato chiuso, chiusura prevista alle 21:30
     const t = await tick(sc.ctx, { echo: false });
-    expect(t.fatto).toContain("nessuna sveglia dovuta");
-    expect(sc.ctx.broker.createdOrders().length).toBe(prima);
+    expect(t.fatto).toContain("recupero della sveglia");
+    expect(t.esito?.tipo).toBe("chiusura");
+    expect(sc.ctx.broker.createdOrders().slice(prima).filter((x) => x.type === "market").length).toBe(0);
+    expect((await sc.ctx.broker.getPositions()).some((p) => p.symbol === "ZZZ")).toBe(true);
+    // un secondo tick non la rifà
+    sc.ctx.setNow("2026-11-24T21:06:00Z");
+    expect((await tick(sc.ctx, { echo: false })).fatto).toBe("nessuna sveglia dovuta");
     sc.ctx.setNow("2026-11-25T08:31:00Z");
     const b = await tick(sc.ctx, { echo: false });
-    expect(b.esito?.allarmi.join(" ")).toMatch(/Sveglie saltate:.*chiusura/);
+    expect(b.esito?.allarmi.join(" ") ?? "").not.toMatch(/Sveglie saltate:.*chiusura/); // recuperata: non è saltata
     // e la mattina dopo la vendita si rimanda all'apertura: il briefing non vende mai
     expect((await sc.ctx.broker.getPositions()).some((p) => p.symbol === "ZZZ")).toBe(true);
     rmRoot(sc.ctx.paths);

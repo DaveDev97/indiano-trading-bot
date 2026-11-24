@@ -10,7 +10,8 @@ import { errText } from "../util/redact.ts";
 import { datiDa, PROFILI, valutaProfilo, type Profilo, type ValutazioneProfilo } from "./profili.ts";
 import { classifica, type TitoloValutato, type VoceClassifica } from "./classifica.ts";
 import { forzaSettori, type ForzaSettori } from "./forza-settori.ts";
-import { capOk, FinnhubCache, prefiltro, prefiltroCacheFile } from "./universo.ts";
+import { assetAmmesso, capOk, FinnhubCache, prefiltro, prefiltroCacheFile } from "./universo.ts";
+import { BORSE_AMMESSE, BORSE_PER_SCELTA, sedeAmmessa } from "../config/costanti.ts";
 
 export interface VoceGrigia {
   simbolo: string;
@@ -30,7 +31,8 @@ export interface Watchlist {
   acquistabili: VoceClassifica[];
   zonaGrigia: VoceGrigia[];
   settoriDeboli: VoceClassifica[];
-  conteggi: { universo: number; prefiltro: number; conDati: number; valutati: number; profili: Record<Profilo, number>; esclusi: Record<string, number> };
+  /** ammessi: titoli delle borse scelte; borse e sede: le scelte dell'universo (assenti nelle scansioni vecchie). */
+  conteggi: { universo: number; ammessi?: number; borse?: string; sede?: string; prefiltro: number; conDati: number; valutati: number; profili: Record<Profilo, number>; esclusi: Record<string, number> };
   criteriNonDisponibili: Record<string, number>;
   industrieNonMappate: Record<string, string[]>;
   avvisi: string[];
@@ -102,11 +104,13 @@ export async function runScan(ctx: Ctx, opts: { limite?: number } = {}): Promise
     const forza = await forzaSettori(ctx.data, now, cal, P.n("settori.periodoForza"));
     ctx.log.info("forza dei settori", { forti: forza.forti, data: forza.data });
     const assets = await ctx.broker.listAssets();
-    const pre = await prefiltro(assets, ctx.data, now, cal, { prezzoMin: P.n("universo.prezzoMin"), controvaloreMin: P.n("universo.controvaloreMin"), cacheFile: prefiltroCacheFile(ctx.paths), log: ctx.log });
+    const borse = BORSE_PER_SCELTA[P.s("universo.borse")] ?? BORSE_AMMESSE;
+    const ammessi = assets.filter((a) => assetAmmesso(a, borse)).length;
+    const pre = await prefiltro(assets, ctx.data, now, cal, { prezzoMin: P.n("universo.prezzoMin"), controvaloreMin: P.n("universo.controvaloreMin"), cacheFile: prefiltroCacheFile(ctx.paths), log: ctx.log, borse });
     const lista = opts.limite ? pre.sort((a, b) => b.controvalore - a.controvalore).slice(0, opts.limite) : pre;
     ctx.log.info("universo dopo il prefiltro", { titoli: lista.length, asset: assets.length });
     const cache = new FinnhubCache(ctx.paths.finnhubCache, ctx.fund, ctx.now);
-    const esclusi: Record<string, number> = { senzaProfilo: 0, senzaMetriche: 0, industriaNonMappata: 0, capitalizzazione: 0, erroreDati: 0 };
+    const esclusi: Record<string, number> = { senzaProfilo: 0, senzaMetriche: 0, industriaNonMappata: 0, sede: 0, capitalizzazione: 0, erroreDati: 0 };
     const nonMappate: Record<string, string[]> = {};
     const titoli: TitoloValutato[] = [];
     let conDati = 0;
@@ -116,6 +120,10 @@ export async function runScan(ctx: Ctx, opts: { limite?: number } = {}): Promise
         const prof = (await cache.profile(a.simbolo, P.n("universo.cacheProfiloGiorni"))).data;
         if (!prof || !prof.finnhubIndustry) {
           esclusi.senzaProfilo!++;
+          continue;
+        }
+        if (!sedeAmmessa(P.s("universo.sede"), prof.country)) {
+          esclusi.sede!++;
           continue;
         }
         const settore = settoreDi(a.simbolo, prof.finnhubIndustry);
@@ -147,7 +155,7 @@ export async function runScan(ctx: Ctx, opts: { limite?: number } = {}): Promise
     const wl = costruisciWatchlist(titoli, forza, P, {
       data,
       generata: now.toISOString(),
-      conteggi: { universo: assets.length, prefiltro: pre.length, conDati, valutati: titoli.length, profili: { growth: 0, value: 0, dividendo: 0 }, esclusi },
+      conteggi: { universo: assets.length, ammessi, borse: P.s("universo.borse"), sede: P.s("universo.sede"), prefiltro: pre.length, conDati, valutati: titoli.length, profili: { growth: 0, value: 0, dividendo: 0 }, esclusi },
       industrieNonMappate: nonMappate,
     });
     if (Object.keys(nonMappate).length) wl.avvisi.push(`Industrie non mappate (titoli esclusi): ${Object.entries(nonMappate).map(([k, v]) => `${k} (${v.length})`).join(", ")}.`);

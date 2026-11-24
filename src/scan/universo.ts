@@ -1,4 +1,5 @@
-// Universo (§4.1): azioni USA attive su NYSE/NASDAQ, prezzo, controvalore, capitalizzazione, dati Finnhub.
+// Universo (§4.1): azioni attive sulle borse scelte (universo.borse, di norma NYSE e NASDAQ), prezzo, controvalore,
+// capitalizzazione, sede della società (universo.sede), dati Finnhub.
 // Le chiamate a Finnhub passano da una cache su file: la scansione riprende da dove si è interrotta.
 import * as path from "node:path";
 import { BORSE_AMMESSE } from "../config/costanti.ts";
@@ -19,8 +20,8 @@ export interface Prefiltrato {
   controvalore: number;
 }
 
-export function assetAmmesso(a: Asset): boolean {
-  return a.status === "active" && a.tradable && a.assetClass === "us_equity" && BORSE_AMMESSE.includes(a.exchange) && !/[\/\s]/.test(a.symbol);
+export function assetAmmesso(a: Asset, borse: string[] = BORSE_AMMESSE): boolean {
+  return a.status === "active" && a.tradable && a.assetClass === "us_equity" && borse.includes(a.exchange) && !/[\/\s]/.test(a.symbol);
 }
 
 /** Prezzo e controvalore medio a 20 sedute dalle candele Alpaca (molti simboli per richiesta). */
@@ -29,15 +30,18 @@ export async function prefiltro(
   data: MarketData,
   now: Date,
   calendar: CalendarDay[],
-  opts: { prezzoMin: number; controvaloreMin: number; cacheFile: string; log: Logger },
+  opts: { prezzoMin: number; controvaloreMin: number; cacheFile: string; log: Logger; borse?: string[] },
 ): Promise<Prefiltrato[]> {
-  const c = readJsonSafe<{ data: string; righe: Prefiltrato[] }>(opts.cacheFile);
+  const borse = opts.borse ?? BORSE_AMMESSE;
+  const chiaveBorse = [...borse].sort().join(",");
+  const c = readJsonSafe<{ data: string; borse?: string; righe: Prefiltrato[] }>(opts.cacheFile);
   const oggi = dateInTz(now, TZ_NY);
-  if (c.ok && c.value.data === oggi) {
+  // la cache vale per il giorno e per le stesse borse (senza "borse" è una cache di prima: NYSE e NASDAQ)
+  if (c.ok && c.value.data === oggi && (c.value.borse ?? "NASDAQ,NYSE") === chiaveBorse) {
     opts.log.info("prefiltro dalla cache", { titoli: c.value.righe.length });
     return c.value.righe.filter((r) => r.prezzo >= opts.prezzoMin && r.controvalore >= opts.controvaloreMin);
   }
-  const ok = assets.filter(assetAmmesso);
+  const ok = assets.filter((a) => assetAmmesso(a, borse));
   const bySym = new Map(ok.map((a) => [a.symbol, a]));
   const out: Prefiltrato[] = [];
   const start = addDays(oggi, -45);
@@ -60,7 +64,7 @@ export async function prefiltro(
     }
     if ((i / 100) % 10 === 0) opts.log.info("prefiltro in corso", { fatti: Math.min(i + 100, ok.length), totale: ok.length });
   }
-  writeJsonAtomic(opts.cacheFile, { data: oggi, righe: out });
+  writeJsonAtomic(opts.cacheFile, { data: oggi, borse: chiaveBorse, righe: out });
   return out.filter((r) => r.prezzo >= opts.prezzoMin && r.controvalore >= opts.controvaloreMin);
 }
 

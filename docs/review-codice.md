@@ -447,3 +447,74 @@ Limiti di questa sessione:
 4. **È sicuro?**
    - **Selezione:** passa dall'autenticazione come le altre pagine. Il simbolo nell'indirizzo è ripulito dai caratteri non ammessi, e i testi passano dall'escape dei modelli HTML.
    - **`avvia`:** l'output dei figli passa da `redact()`.
+
+## Resoconto di fine giornata e pagina Guida (24/11/2026)
+
+1. **È corretto?**
+   - Distanze calcolate dal prezzo attuale, verificate con valori di riferimento nei test. Ad esempio, con ingresso 100, prezzo 110, stop 90 e take profit 120: stop a −18,18% (−200 $), take profit a +9,09% (+100 $), al 67% del percorso.
+   - Il trailing usa `livelloStop`, lo stesso livello della verifica delle protezioni.
+   - I casi limite (oltre lo stop, piano mancante, prezzo mancante) hanno un test.
+2. **Funziona?** C'è un test della sveglia di chiusura completa con una posizione aperta e il parametro delle posizioni spento. La Guida è vista nel browser con i dati reali.
+3. **Aiuta a guadagnare, o a capirlo?** Il resoconto fa vedere ogni sera quanto rischio e quanto margine resta su ogni posizione. La Guida rende verificabili le regole. Nessuna delle due cambia una decisione.
+4. **È sicuro?** Nessun dato sensibile nuovo. I simboli passano da `esc()` nel messaggio Telegram e dall'escape dei modelli nella pagina.
+
+## Override, scansione manuale, universo e impatto, grafici a periodi (24/11/2026)
+
+1. **È corretto?**
+   - Gli override si applicano in una sola funzione (`applicaOverride`), usata sia dalla sveglia sia dalla dashboard, senza modificare il file della watchlist.
+   - Casi limite: aggiunto non più in zona grigia (sospeso), tolto non più scelto (resta finché lo annulli), doppio clic (rifiutato), simbolo fuori lista (rifiutato).
+   - Universo: i valori iniziali riproducono il comportamento di prima. La sede mancante con un filtro attivo esclude il titolo.
+2. **Funziona?** I test coprono:
+   - override puri e azioni con diario;
+   - una sveglia che compra l'aggiunto e non il tolto;
+   - le azioni dalla dashboard, con CSRF e redirect solo interno;
+   - la scansione manuale, con un lanciatore finto;
+   - i 4 periodi del grafico;
+   - l'anteprima con la stima, e il salvataggio rifiutato senza stima;
+   - la scansione con «solo NASDAQ» e con i filtri di sede.
+
+   Con i dati reali ho provato la stima su tre casi: NYSE American (+75 titoli stimati, consumo AI invariato), solo USA (2.187 → 1.855), candidati 10 → 20 (+14,73 $ al mese nel caso peggiore). Ho anche visto le pagine nel browser.
+3. **Aiuta a guadagnare, o a capirlo?**
+   - Gli override danno controllo, ma rischiano di confondere il risultato: per questo sono marcati e misurati a parte.
+   - La stima evita di scoprire il costo di un cambio dalla fattura.
+4. **È sicuro?**
+   - Le azioni nuove passano dall'autenticazione e dal token CSRF, e il redirect resta dentro `/selezione`.
+   - Nessuna azione nuova manda ordini, quindi gabbia e lock non si possono aggirare.
+   - La scansione manuale si avvia senza shell, con argomenti fissi.
+
+## Configurazione guidata e recupero delle sveglie (24/11/2026)
+
+Revisione fatta anche da due agenti esterni, senza contesto sul progetto, che hanno attaccato il codice con test usa e getta, sempre con servizi finti. Tutto quello che hanno trovato è corretto, e ogni problema ha un test di regressione in `tests/revisione.test.ts`.
+
+**Recupero delle sveglie: problemi trovati e corretti**
+- **Recuperi a catena:** si recuperava l'apertura, poi al tick dopo anche la metà seduta. Ora le altre sveglie saltate di oggi diventano "concluse" insieme alla recuperata.
+- **Sveglia lanciata a mano con `once`:** il recupero non la vedeva, e poteva fare un secondo giro di acquisti. Ora una forzata di oggi vale come fatta per il suo tipo.
+- **Id delle forzate:** potevano coincidere con quello di una sveglia prevista (una forzata lanciata alle 15:40 prendeva l'id dell'apertura). Ora hanno il suffisso `f`.
+- **Lock bloccato:** produceva un allarme Telegram a ogni tick, per tutto il giorno. Ora durante il recupero si registra solo nel log; l'allarme lo mandano le sveglie previste.
+- **Recupero interrotto da un processo ucciso:** non si ritentava mai, con il rischio di lasciare una posizione senza protezione. Ora si riprende una volta (tentato due volte al massimo; concluso = mai più).
+- **File degli override illeggibile:** i titoli tolti a mano tornavano comprabili in silenzio, e il salvataggio successivo cancellava gli altri override. Ora la sveglia non compra e manda un allarme, la dashboard non lo sovrascrive e la pagina Selezione lo segnala.
+- **Accettato e documentato:** una sveglia fallita nella sua finestra (ad esempio con il broker giù) viene ritentata una volta come recupero. Gli id degli ordini sono gli stessi, quindi nessun doppione.
+
+**Configurazione guidata: problemi trovati e corretti**
+- **`secrets.ts` scambiato per assente:** un file scritto a mano che importa un modulo mancante veniva preso per assente e poi sovrascritto. Ora "assente" significa solo che il file non esiste; negli altri casi il bot si ferma e lo dice.
+- **Codice bloccato da un altro sito:** una pagina web qualunque poteva consumare i tentativi del codice e bloccarlo. Ora un GET con il codice vale solo come navigazione diretta.
+- **Tentativi in parallelo:** aggiravano il limite di 10. Ora si contano prima dell'attesa.
+- **Codice riutilizzabile:** rientrare con il codice buttava fuori la sessione aperta, e il codice era scritto nel log. Ora non si butta fuori nessuno, e il codice sta in `state/codice-configurazione.txt`, con permesso 600 su Linux, cancellato alla fine.
+- **Codice con caratteri non ASCII:** dava un errore 500. Ora il confronto è a byte.
+- **Metodi HTTP diversi da GET e POST:** ora rispondono 405.
+- **Porta 80 o 0:** gli host ammessi ora si calcolano dalla porta vera.
+- **File temporaneo con le chiavi:** era fuori da `.gitignore`. Ora `secrets.ts.*` è escluso e il temporaneo si cancella se la scrittura fallisce.
+- **`secrets.ts` incompleto riscritto:** ora se ne tiene una copia accanto, anch'essa esclusa da git.
+- **Motore sulle chiavi vecchie:** se la configurazione cambiava le chiavi, il motore continuava con quelle di prima. Ora il motore si riavvia se `secrets.ts` cambia.
+- **Controllo di Claude Code:** si poteva bloccare perché nessuno leggeva l'uscita di errore. Ora viene letta.
+
+**Cosa ha retto agli attacchi**
+- Nessuna chiave è mai arrivata al browser o in un messaggio d'errore.
+- Valori ostili (U+2028/2029, NUL, BOM, `${}`, `*/`, virgolette) producono un file valido, che si rilegge identico.
+- La chiave live (AK) viene rifiutata prima di qualsiasi chiamata.
+- Restano solidi: CSRF, controllo dell'origine, controllo dell'host, codice di riavvio 75 e limiti di riavvio.
+- Sul recupero hanno retto:
+  - ora legale fuori sincrono tra USA ed Europa, mezze giornate, festivi;
+  - dopo mezzanotte a Roma si recupera la seduta di New York ancora in corso;
+  - due tick insieme: una sola esecuzione;
+  - dopo l'orario della chiusura il recupero non compra mai.

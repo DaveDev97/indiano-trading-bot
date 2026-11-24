@@ -11,7 +11,7 @@ import { appendJournal } from "../journal/journal.ts";
 import { decidiProposta, scadiProposte } from "../learning/review.ts";
 import { leggiPulsanti } from "../telegram/poller.ts";
 import { readUsage } from "../brain/usage.ts";
-import { writeJsonAtomic } from "../util/atomic.ts";
+import { readJsonSafe, writeJsonAtomic } from "../util/atomic.ts";
 import { errText, redact } from "../util/redact.ts";
 import { esc } from "../telegram/format.ts";
 import { CSS, JS, escHtml, pagina, html } from "./html.ts";
@@ -21,6 +21,11 @@ import { chiudi, errore, modificaLivelli, passaATrailing } from "./azioni.ts";
 import { csvSpaccato, estremi, filtra, PERIODI, type PeriodoId } from "./consumi.ts";
 import { svuotaCache } from "./dati.ts";
 import { paginaSelezione, paginaSelezioneDettaglio } from "./pagine-selezione.ts";
+import { paginaGuida } from "./pagine-guida.ts";
+import { CHIAVI_IMPATTO, stimaImpatto } from "./impatto-universo.ts";
+import { lanciaScansione, statoScansione } from "./scansione-manuale.ts";
+import { modificaOverride } from "../scan/override.ts";
+import type { Watchlist } from "../scan/scan.ts";
 
 interface Sessione {
   csrf: string;
@@ -36,6 +41,8 @@ export interface OpzioniServer {
   password: string;
   porta: number;
   pollerMs?: number | null;
+  /** Lancio della scansione manuale; nei test si sostituisce, per non avviare processi veri. */
+  lanciaScansione?: (ctx: Ctx) => Promise<{ ok: boolean; messaggio: string }>;
 }
 
 export function avviaDashboard(ctx: Ctx, o: OpzioniServer) {
@@ -132,8 +139,9 @@ export function avviaDashboard(ctx: Ctx, o: OpzioniServer) {
     const p = url.pathname;
     if (p === "/") return htmlResp(await paginaPanoramica(ctx, s.csrf, url.searchParams, flash));
     if (p.startsWith("/posizione/")) return htmlResp(await paginaPosizione(ctx, s.csrf, decodeURIComponent(p.slice(11)).toUpperCase().replace(/[^A-Z0-9.\-]/g, ""), flash));
-    if (p === "/selezione") return htmlResp(paginaSelezione(ctx, s.csrf));
-    if (p.startsWith("/selezione/")) return htmlResp(await paginaSelezioneDettaglio(ctx, s.csrf, decodeURIComponent(p.slice(11)).toUpperCase().replace(/[^A-Z0-9.-]/g, "")));
+    if (p === "/guida") return htmlResp(paginaGuida(ctx, s.csrf));
+    if (p === "/selezione") return htmlResp(paginaSelezione(ctx, s.csrf, flash, await statoScansione(ctx)));
+    if (p.startsWith("/selezione/")) return htmlResp(await paginaSelezioneDettaglio(ctx, s.csrf, decodeURIComponent(p.slice(11)).toUpperCase().replace(/[^A-Z0-9.-]/g, ""), url.searchParams, flash));
     if (p === "/storico") return htmlResp(paginaStorico(ctx, s.csrf, url.searchParams));
     if (p === "/ombra") return htmlResp(paginaOmbra(ctx, s.csrf));
     if (p === "/review") return htmlResp(paginaReview(ctx, s.csrf, flash));
@@ -208,16 +216,35 @@ export function avviaDashboard(ctx: Ctx, o: OpzioniServer) {
           await notifica(`freno d'emergenza sbloccato; nuovo massimo di riferimento ${acc.equity.toFixed(0)} $`);
           return flash(true, `Freno sbloccato. Massimo di riferimento: ${acc.equity.toFixed(0)} $.`, "/impostazioni");
         }
+        case "/azione/selezione": {
+          // override della lista: nessun ordine, la sveglia lo legge alla prossima esecuzione
+          const az = f.get("azione");
+          const torna = (f.get("torna") ?? "").startsWith("/selezione") ? f.get("torna")! : "/selezione";
+          if (az !== "aggiungi" && az !== "rimuovi" && az !== "annulla") return flash(false, "Azione non riconosciuta.", torna);
+          if (!sim) return flash(false, "Simbolo mancante.", torna);
+          const wlr = readJsonSafe<Watchlist>(ctx.paths.watchlist);
+          const r = modificaOverride(ctx.paths, az, sim, wlr.ok ? wlr.value : null, ctx.now());
+          if (r.ok) await notifica(`override della selezione: ${az} ${sim}`);
+          return flash(r.ok, r.messaggio, torna);
+        }
+        case "/azione/scansione": {
+          const r = await (o.lanciaScansione ?? lanciaScansione)(ctx);
+          if (r.ok) await notifica("scansione manuale avviata dalla dashboard");
+          return flash(r.ok, r.messaggio, "/selezione");
+        }
         case "/azione/parametri/anteprima": {
           const P = loadParams(ctx.paths, ctx.now()).params;
           const a = leggiModuloParametri(f, P.valori());
-          return htmlResp(paginaImpostazioni(ctx, s.csrf, null, a, f.get("scheda")));
+          const impatto = a.errori.length ? null : await stimaImpatto(ctx, P, a.modifiche);
+          return htmlResp(paginaImpostazioni(ctx, s.csrf, null, a, f.get("scheda"), impatto));
         }
         case "/azione/parametri/salva": {
           const P = loadParams(ctx.paths, ctx.now()).params;
           const a = leggiModuloParametri(f, P.valori());
           const torna = `/impostazioni?scheda=${encodeURIComponent(f.get("scheda") ?? "")}`;
           if (a.errori.length) return flash(false, a.errori.join(" "), torna);
+          // un cambio che incide sul consumo AI si salva solo dopo aver visto la stima dell'impatto nell'anteprima
+          if (Object.keys(a.modifiche).some((k) => CHIAVI_IMPATTO.includes(k)) && f.get("impattoVisto") !== "1") return flash(false, "Questo cambio incide su scansione e consumo AI: apri l'anteprima e conferma dopo aver visto la stima.", torna);
           const r = saveParams(ctx.paths, a.modifiche, { autore: "utente", versioneAttesa: Number(f.get("attesa")), now: ctx.now() });
           if (!r.ok) return flash(false, r.errori.join(" "), torna);
           await notifica(`parametri cambiati (${r.params.versione}): ${r.modifiche.map((m) => `${m.chiave} ${m.da} → ${m.a}`).join("; ")}`);

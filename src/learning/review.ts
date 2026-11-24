@@ -37,6 +37,8 @@ function gruppi(s: Scheda, motivo: string, durata: number | null): Record<string
     durata: fasciaDurata(durata),
     versione: s.ingresso.paramsVersione,
     categoria: s.ingresso.categoria ?? "reale",
+    // titoli messi in lista a mano (override) contro quelli scelti dalla classifica: si misurano a parte
+    selezione: s.ingresso.override ? "aggiunto a mano" : "classifica",
   };
 }
 
@@ -110,6 +112,7 @@ export const SYSTEM_REVIEW = [
   "Scegli quali proposte presentare (anche nessuna) indicando i loro id in `proposteScelte`.",
   "Nel testo: cosa ha funzionato, cosa no, cosa proponi e perché, quanto è affidabile la conclusione.",
   "Con campione piccolo scrivilo chiaramente. Le operazioni ombra sono simulate: non mescolarle ai risultati reali.",
+  "In `perSelezione` le operazioni «aggiunto a mano» nascono da override dell'utente sulla lista: se ci sono, commentale a parte e non attribuirle alla classifica.",
   "Se `modificheManuali` non è vuoto, dedica un paragrafo a ogni modifica fatta a mano: cosa è cambiato, perché (nota), e cosa dicono i risultati per versione (`perVersione`) rispetto alla versione precedente, con la cautela dovuta al campione.",
 ].join("\n");
 
@@ -155,6 +158,7 @@ export async function runReview(ctx: Ctx, P: Params, motivo: string): Promise<Re
     perUscita: perGruppo(rr, "uscita"),
     perDurata: perGruppo(rr, "durata"),
     perVersione: perGruppo(rr, "versione"),
+    perSelezione: perGruppo(rr, "selezione"),
     ombraPerCategoria: perGruppo(ro, "categoria"),
     modalitaReali: confrontoModalita(reali),
     modalitaTutte: confrontoModalita([...reali, ...ombra]),
@@ -167,7 +171,7 @@ export async function runReview(ctx: Ctx, P: Params, motivo: string): Promise<Re
   const candidate = ev.candidate.map((v, i) => ({ id: `${id}-p${i + 1}`, ...v }));
   const datiCervello = {
     motivo, campionePiccolo: piccolo, operazioniRealiChiuse: realiChiuse, primaRiga: primaRiga || null,
-    statistiche: { reali: statisticheTot.reali, ombra: statisticheTot.ombra, perProfilo: statisticheTot.perProfilo, perUscita: statisticheTot.perUscita, modalita: statisticheTot.modalitaTutte, portafogloVsSpy: spy },
+    statistiche: { reali: statisticheTot.reali, ombra: statisticheTot.ombra, perSelezione: statisticheTot.perSelezione, perProfilo: statisticheTot.perProfilo, perUscita: statisticheTot.perUscita, modalita: statisticheTot.modalitaTutte, portafogloVsSpy: spy },
     proposteCandidate: candidate.map((c) => ({ id: c.id, parametro: c.descrizione, da: c.da, a: c.a, effettoR: c.effettoR, n: c.n, icPrimi: c.icPrimi, icUltimi: c.icUltimi })),
     nonValutati: ev.nonValutati.slice(0, 30),
     // modifiche fatte a mano dall'ultima review: il cervello ne commenta l'effetto, versione per versione

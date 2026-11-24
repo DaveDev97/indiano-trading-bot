@@ -27,6 +27,8 @@ export interface IngressoScheda {
   punteggio: number | null;
   posizioneClassifica: number | null;
   motivazione: string | null;
+  /** "aggiunto": il titolo era nella lista per un override manuale, non per la classifica. */
+  override?: string | null;
   paramsVersione: string;
   /** Prezzo al momento della decisione (reale) o null per l'ombra in attesa. */
   prezzo: number | null;

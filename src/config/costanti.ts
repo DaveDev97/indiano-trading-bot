@@ -13,6 +13,23 @@ export const MAX_POSIZIONI_ASSOLUTO = 5;
 /** Borse ammesse per l'universo. */
 export const BORSE_AMMESSE = ["NYSE", "NASDAQ"];
 
+/** Borse ammesse per ogni scelta del parametro universo.borse (codici Alpaca). Alpaca negozia solo titoli quotati in USA. */
+export const BORSE_PER_SCELTA: Record<string, string[]> = {
+  "NYSE e NASDAQ": ["NYSE", "NASDAQ"],
+  "NYSE, NASDAQ e NYSE American": ["NYSE", "NASDAQ", "AMEX"],
+  "solo NYSE": ["NYSE"],
+  "solo NASDAQ": ["NASDAQ"],
+};
+export const NOME_BORSA: Record<string, string> = { NYSE: "NYSE", NASDAQ: "NASDAQ", AMEX: "NYSE American", ARCA: "NYSE Arca", BATS: "Cboe BZX", OTC: "OTC" };
+
+/** Sede della società (campo country del profilo Finnhub). */
+export const SEDI = ["tutte", "solo USA", "solo estere"] as const;
+export function sedeAmmessa(scelta: string, country: string | undefined | null): boolean {
+  if (scelta === "tutte") return true;
+  if (!country) return false; // sede non disponibile: con un filtro attivo si esclude, per prudenza
+  return scelta === "solo USA" ? country === "US" : country !== "US";
+}
+
 /** Indirizzo della dashboard: solo il computer stesso. */
 export const DASHBOARD_HOST = "127.0.0.1";
 
